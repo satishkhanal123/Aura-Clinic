@@ -1,13 +1,6 @@
-/* =========================================================
-   AURA CLINIC — REPORTS MODULE
-   File: frontend/js/modules/reports.js
-   Purpose: Reporting, analytics, export, and printable summaries
-   ========================================================= */
-
-(function () {
+(function (window, document) {
   "use strict";
 
-  const CONFIG = window.AURA_CONFIG || {};
   const STORAGE = window.AURA_STORAGE;
   const EVENTS = window.AURA_EVENTS;
   const UTILS = window.AURA_UTILS;
@@ -15,49 +8,107 @@
 
   const MODULE_NAME = "reports";
 
-  const STORE_NAMES = {
+  const STORES = {
     patients: "patients",
-    queues: "queues",
+    staff: "staff",
     encounters: "encounters",
-    consultations: "consultations",
+    queues: "queues",
     vitals: "vitals",
+    consultations: "consultations",
+    prescriptions: "prescriptions",
     labOrders: "labOrders",
     labResults: "labResults",
     invoices: "invoices",
     payments: "payments",
-    staff: "staff",
-    auditLogs: "auditLogs"
+    auditLogs: "auditLogs",
+    settings: "settings"
   };
 
   const state = {
-    patients: [],
-    queues: [],
-    encounters: [],
-    consultations: [],
-    vitals: [],
-    labOrders: [],
-    labResults: [],
-    invoices: [],
-    payments: [],
-    staff: [],
-    auditLogs: [],
-
-    fromDate: "",
-    toDate: "",
-    reportType: "overview",
-    searchTerm: "",
-
-    isLoading: false,
-    initialized: false
+    initialized: false,
+    loading: false,
+    range: "today",
+    customFrom: "",
+    customTo: "",
+    activeReport: "overview",
+    search: "",
+    data: {
+      patients: [],
+      staff: [],
+      encounters: [],
+      queues: [],
+      vitals: [],
+      consultations: [],
+      prescriptions: [],
+      labOrders: [],
+      labResults: [],
+      invoices: [],
+      payments: [],
+      auditLogs: [],
+      settings: null
+    }
   };
 
-  const listeners = new Set();
+  const REPORTS = [
+    {
+      id: "overview",
+      label: "Overview",
+      icon: "▦",
+      description: "Clinic-wide operational summary."
+    },
+    {
+      id: "patients",
+      label: "Patients",
+      icon: "♙",
+      description: "Registration and patient activity."
+    },
+    {
+      id: "clinical",
+      label: "Clinical",
+      icon: "✚",
+      description: "Consultations, encounters, and outcomes."
+    },
+    {
+      id: "laboratory",
+      label: "Laboratory",
+      icon: "⌬",
+      description: "Orders, processing, and result activity."
+    },
+    {
+      id: "financial",
+      label: "Financial",
+      icon: "₹",
+      description: "Invoices, collections, and outstanding balances."
+    },
+    {
+      id: "staff",
+      label: "Staff",
+      icon: "♧",
+      description: "Staff activity and workforce summary."
+    },
+    {
+      id: "audit",
+      label: "Audit Log",
+      icon: "◷",
+      description: "Recent administrative activity."
+    }
+  ];
 
-  /* =========================================================
-     HELPERS
-     ========================================================= */
+  const REPORT_TITLES = {
+    overview: "Clinic Overview",
+    patients: "Patient Report",
+    clinical: "Clinical Report",
+    laboratory: "Laboratory Report",
+    financial: "Financial Report",
+    staff: "Staff Report",
+    audit: "Audit Log Report"
+  };
 
-  function escapeHtml(value) {
+  function getStore(name) {
+    return STORES[name] || name;
+  }
+
+  function escape(value) {
     if (UTILS && typeof UTILS.escapeHtml === "function") {
       return UTILS.escapeHtml(String(value ?? ""));
     }
@@ -70,8 +121,16 @@
       .replace(/'/g, "&#039;");
   }
 
+  function uid() {
+    if (UTILS && typeof UTILS.createId === "function") {
+      return UTILS.createId("report");
+    }
+
+    return `report_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
   function formatCurrency(value) {
-    const amount = Number(value || 0);
+    const amount = Number(value) || 0;
 
     if (UTILS && typeof UTILS.formatCurrency === "function") {
       return UTILS.formatCurrency(amount);
@@ -85,229 +144,352 @@
   }
 
   function formatNumber(value) {
-    return new Intl.NumberFormat("en-IN").format(Number(value || 0));
+    return new Intl.NumberFormat("en-IN").format(Number(value) || 0);
   }
 
-  function formatDate(dateValue) {
-    if (!dateValue) return "—";
+  function formatDate(value, options = {}) {
+    if (!value) return "—";
 
-    const date = new Date(dateValue);
+    const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) {
+      return "—";
+    }
 
-    return date.toLocaleDateString("en-IN", {
+    return new Intl.DateTimeFormat("en-IN", {
       day: "2-digit",
-      month: "short",
-      year: "numeric"
-    });
+      month: options.month || "short",
+      year: options.year || "numeric",
+      hour: options.hour ? "2-digit" : undefined,
+      minute: options.minute ? "2-digit" : undefined
+    }).format(date);
   }
 
-  function formatDateTime(dateValue) {
-    if (!dateValue) return "—";
+  function dateOnly(value) {
+    if (!value) return "";
 
-    const date = new Date(dateValue);
+    const date = new Date(value);
 
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
 
-    return date.toLocaleString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    return date.toISOString().slice(0, 10);
   }
 
-  function todayISO() {
-    const date = new Date();
-    const offset = date.getTimezoneOffset();
-    const localDate = new Date(date.getTime() - offset * 60000);
-
-    return localDate.toISOString().slice(0, 10);
+  function startOfDay(date = new Date()) {
+    const result = new Date(date);
+    result.setHours(0, 0, 0, 0);
+    return result;
   }
 
-  function startOfDay(dateValue) {
-    const date = new Date(dateValue);
-    date.setHours(0, 0, 0, 0);
-    return date;
+  function endOfDay(date = new Date()) {
+    const result = new Date(date);
+    result.setHours(23, 59, 59, 999);
+    return result;
   }
 
-  function endOfDay(dateValue) {
-    const date = new Date(dateValue);
-    date.setHours(23, 59, 59, 999);
-    return date;
+  function addDays(date, days) {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  }
+
+  function getDateRange() {
+    const now = new Date();
+
+    if (state.range === "custom") {
+      const from = state.customFrom
+        ? startOfDay(new Date(`${state.customFrom}T00:00:00`))
+        : startOfDay(now);
+
+      const to = state.customTo
+        ? endOfDay(new Date(`${state.customTo}T23:59:59`))
+        : endOfDay(now);
+
+      return from <= to
+        ? { from, to }
+        : { from: to, to: from };
+    }
+
+    if (state.range === "today") {
+      return {
+        from: startOfDay(now),
+        to: endOfDay(now)
+      };
+    }
+
+    if (state.range === "yesterday") {
+      const yesterday = addDays(now, -1);
+
+      return {
+        from: startOfDay(yesterday),
+        to: endOfDay(yesterday)
+      };
+    }
+
+    if (state.range === "last7") {
+      return {
+        from: startOfDay(addDays(now, -6)),
+        to: endOfDay(now)
+      };
+    }
+
+    if (state.range === "last30") {
+      return {
+        from: startOfDay(addDays(now, -29)),
+        to: endOfDay(now)
+      };
+    }
+
+    if (state.range === "thisMonth") {
+      return {
+        from: new Date(now.getFullYear(), now.getMonth(), 1),
+        to: endOfDay(now)
+      };
+    }
+
+    if (state.range === "lastMonth") {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+
+      return {
+        from: startOfDay(firstDay),
+        to: endOfDay(lastDay)
+      };
+    }
+
+    if (state.range === "thisYear") {
+      return {
+        from: new Date(now.getFullYear(), 0, 1),
+        to: endOfDay(now)
+      };
+    }
+
+    return {
+      from: startOfDay(now),
+      to: endOfDay(now)
+    };
   }
 
   function getRecordDate(record) {
     return (
-      record?.createdAt ||
       record?.updatedAt ||
+      record?.createdAt ||
       record?.date ||
-      record?.registeredAt ||
-      record?.appointmentDate ||
+      record?.encounterDate ||
       record?.consultationDate ||
-      record?.serviceDate ||
-      record?.issuedAt ||
       record?.paymentDate ||
-      record?.performedAt ||
+      record?.issuedAt ||
+      record?.orderedAt ||
+      record?.resultDate ||
       record?.timestamp ||
+      record?.time ||
       null
     );
   }
 
-  function isDateInRange(record, fromDate, toDate) {
+  function isWithinRange(record, range = getDateRange()) {
     const value = getRecordDate(record);
 
-    if (!value) return false;
-
-    const recordDate = new Date(value);
-
-    if (Number.isNaN(recordDate.getTime())) return false;
-
-    if (fromDate) {
-      const from = startOfDay(fromDate);
-
-      if (recordDate < from) return false;
+    if (!value) {
+      return false;
     }
 
-    if (toDate) {
-      const to = endOfDay(toDate);
+    const date = new Date(value);
 
-      if (recordDate > to) return false;
+    if (Number.isNaN(date.getTime())) {
+      return false;
     }
 
-    return true;
+    return date >= range.from && date <= range.to;
   }
 
-  function getFilteredRecords(records) {
-    return records.filter((record) =>
-      isDateInRange(record, state.fromDate, state.toDate)
-    );
+  function filterByRange(records) {
+    return (records || []).filter((record) => isWithinRange(record));
   }
 
   function getPatientName(patient) {
-    if (!patient) return "Unknown Patient";
+    if (!patient) return "Unknown patient";
 
-    if (patient.fullName) return patient.fullName;
-
-    return [
+    const name = [
       patient.firstName,
       patient.middleName,
       patient.lastName
     ]
       .filter(Boolean)
-      .join(" ")
-      .trim() || "Unknown Patient";
-  }
-
-  function getPatientById(id) {
-    if (!id) return null;
-
-    return state.patients.find(
-      (patient) =>
-        patient.id === id ||
-        patient.patientId === id ||
-        patient.uhid === id
-    ) || null;
-  }
-
-  function getStaffById(id) {
-    if (!id) return null;
-
-    return state.staff.find(
-      (staff) =>
-        staff.id === id ||
-        staff.staffId === id
-    ) || null;
-  }
-
-  function getStaffName(staffId, fallback = "Unassigned") {
-    const staff = getStaffById(staffId);
-
-    if (!staff) return fallback;
+      .join(" ");
 
     return (
-      staff.fullName ||
-      [
-        staff.firstName,
-        staff.middleName,
-        staff.lastName
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim() ||
-      staff.name ||
-      fallback
+      name ||
+      patient.name ||
+      patient.fullName ||
+      patient.patientName ||
+      patient.uhid ||
+      "Unknown patient"
     );
   }
 
-  function notify(type, title, message) {
+  function getStaffName(staff) {
+    if (!staff) return "Unknown staff";
+
+    const name = [
+      staff.firstName,
+      staff.middleName,
+      staff.lastName
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return name || staff.name || staff.fullName || "Unknown staff";
+  }
+
+  function getPatientById(id) {
+    return state.data.patients.find(
+      (patient) => patient.id === id || patient.uhid === id
+    );
+  }
+
+  function getStaffById(id) {
+    return state.data.staff.find(
+      (staff) => staff.id === id || staff.staffId === id
+    );
+  }
+
+  function getPatientLabel(id) {
+    const patient = getPatientById(id);
+    return patient ? getPatientName(patient) : id || "Unknown patient";
+  }
+
+  function getStaffLabel(id) {
+    const staff = getStaffById(id);
+    return staff ? getStaffName(staff) : id || "Unknown staff";
+  }
+
+  function getNumber(record, keys) {
+    for (const key of keys) {
+      if (record && record[key] !== undefined && record[key] !== null) {
+        const value = Number(record[key]);
+
+        if (!Number.isNaN(value)) {
+          return value;
+        }
+      }
+    }
+
+    return 0;
+  }
+
+  function sum(records, keys) {
+    return (records || []).reduce(
+      (total, record) => total + getNumber(record, keys),
+      0
+    );
+  }
+
+  function uniqueCount(records, getter) {
+    return new Set(
+      (records || [])
+        .map(getter)
+        .filter((value) => value !== undefined && value !== null && value !== "")
+    ).size;
+  }
+
+  function countBy(records, getter) {
+    return (records || []).reduce((result, record) => {
+      const key = getter(record) || "Unknown";
+
+      result[key] = (result[key] || 0) + 1;
+      return result;
+    }, {});
+  }
+
+  function sortByDate(records, descending = true) {
+    return [...(records || [])].sort((a, b) => {
+      const dateA = new Date(getRecordDate(a) || 0).getTime();
+      const dateB = new Date(getRecordDate(b) || 0).getTime();
+
+      return descending ? dateB - dateA : dateA - dateB;
+    });
+  }
+
+  function normalizeStatus(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s]+/g, "-");
+  }
+
+  function getStatusClass(status) {
+    const value = normalizeStatus(status);
+
+    if (
+      ["paid", "completed", "verified", "active", "success", "settled"].includes(
+        value
+      )
+    ) {
+      return "is-success";
+    }
+
+    if (
+      [
+        "pending",
+        "in-progress",
+        "processing",
+        "partially-paid",
+        "draft",
+        "waiting"
+      ].includes(value)
+    ) {
+      return "is-warning";
+    }
+
+    if (
+      ["cancelled", "cancelled", "failed", "rejected", "inactive"].includes(
+        value
+      )
+    ) {
+      return "is-danger";
+    }
+
+    return "is-neutral";
+  }
+
+  function statusBadge(status) {
+    const label = String(status || "Unknown")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    return `<span class="status-badge ${getStatusClass(
+      status
+    )}">${escape(label)}</span>`;
+  }
+
+  function showToast(message, type = "info") {
     if (APP && typeof APP.toast === "function") {
       APP.toast({
         type,
-        title,
+        title: type === "success" ? "Reports" : "Reports",
         message
       });
       return;
     }
 
     if (window.AURA && typeof window.AURA.toast === "function") {
-      window.AURA.toast({
-        type,
-        title,
-        message
-      });
-    }
-  }
-
-  function emit(eventName, payload) {
-    if (EVENTS && typeof EVENTS.emit === "function") {
-      EVENTS.emit(eventName, payload);
-    }
-  }
-
-  function subscribe(callback) {
-    if (typeof callback !== "function") {
-      return function () {};
+      window.AURA.toast(message, type);
+      return;
     }
 
-    listeners.add(callback);
-
-    return function unsubscribe() {
-      listeners.delete(callback);
-    };
+    console.info(`[AURA Reports] ${message}`);
   }
 
-  function notifySubscribers() {
-    listeners.forEach((callback) => {
-      try {
-        callback(getState());
-      } catch (error) {
-        console.error("[AURA Reports] Subscriber error:", error);
-      }
-    });
+  function getContainer() {
+    return (
+      document.querySelector('[data-route-view="reports"]') ||
+      document.querySelector("#app-content") ||
+      document.querySelector("#app")
+    );
   }
-
-  function getState() {
-    return {
-      ...state,
-      patients: [...state.patients],
-      queues: [...state.queues],
-      encounters: [...state.encounters],
-      consultations: [...state.consultations],
-      vitals: [...state.vitals],
-      labOrders: [...state.labOrders],
-      labResults: [...state.labResults],
-      invoices: [...state.invoices],
-      payments: [...state.payments],
-      staff: [...state.staff],
-      auditLogs: [...state.auditLogs]
-    };
-  }
-
-  /* =========================================================
-     DATA LOADING
-     ========================================================= */
 
   async function loadStore(storeName) {
     if (!STORAGE || typeof STORAGE.getAll !== "function") {
@@ -315,1941 +497,2212 @@
     }
 
     try {
-      const records = await STORAGE.getAll(storeName);
-      return Array.isArray(records) ? records : [];
+      const result = await STORAGE.getAll(getStore(storeName));
+      return Array.isArray(result) ? result : [];
     } catch (error) {
-      console.warn(`[AURA Reports] Failed to load ${storeName}:`, error);
+      console.error(`[AURA Reports] Failed to load ${storeName}`, error);
       return [];
     }
   }
 
   async function loadData() {
-    state.isLoading = true;
+    state.loading = true;
 
-    const results = await Promise.all([
-      loadStore(STORE_NAMES.patients),
-      loadStore(STORE_NAMES.queues),
-      loadStore(STORE_NAMES.encounters),
-      loadStore(STORE_NAMES.consultations),
-      loadStore(STORE_NAMES.vitals),
-      loadStore(STORE_NAMES.labOrders),
-      loadStore(STORE_NAMES.labResults),
-      loadStore(STORE_NAMES.invoices),
-      loadStore(STORE_NAMES.payments),
-      loadStore(STORE_NAMES.staff),
-      loadStore(STORE_NAMES.auditLogs)
-    ]);
+    const storeNames = [
+      "patients",
+      "staff",
+      "encounters",
+      "queues",
+      "vitals",
+      "consultations",
+      "prescriptions",
+      "labOrders",
+      "labResults",
+      "invoices",
+      "payments",
+      "auditLogs"
+    ];
 
-    [
-      state.patients,
-      state.queues,
-      state.encounters,
-      state.consultations,
-      state.vitals,
-      state.labOrders,
-      state.labResults,
-      state.invoices,
-      state.payments,
-      state.staff,
-      state.auditLogs
-    ] = results;
+    const results = await Promise.all(
+      storeNames.map((storeName) => loadStore(storeName))
+    );
 
-    state.isLoading = false;
+    storeNames.forEach((storeName, index) => {
+      state.data[storeName] = results[index];
+    });
 
-    notifySubscribers();
+    try {
+      state.data.settings = STORAGE
+        ? await STORAGE.get(getStore("settings"), "clinic-settings")
+        : null;
+    } catch (error) {
+      state.data.settings = null;
+    }
 
-    return getState();
+    state.loading = false;
+    return state.data;
   }
 
-  /* =========================================================
-     REPORT CALCULATIONS
-     ========================================================= */
+  function getClinicName() {
+    return (
+      state.data.settings?.clinicName ||
+      state.data.settings?.clinic?.name ||
+      window.AURA_CONFIG?.clinic?.name ||
+      "AURA Clinic"
+    );
+  }
 
-  function getReportData() {
-    const patients = getFilteredRecords(state.patients);
-    const queues = getFilteredRecords(state.queues);
-    const encounters = getFilteredRecords(state.encounters);
-    const consultations = getFilteredRecords(state.consultations);
-    const vitals = getFilteredRecords(state.vitals);
-    const labOrders = getFilteredRecords(state.labOrders);
-    const labResults = getFilteredRecords(state.labResults);
-    const invoices = getFilteredRecords(state.invoices);
-    const payments = getFilteredRecords(state.payments);
-    const auditLogs = getFilteredRecords(state.auditLogs);
+  function getRangeLabel() {
+    const range = getDateRange();
 
-    const completedQueues = queues.filter(
-      (queue) =>
-        queue.status === "completed" ||
-        queue.status === "served" ||
-        queue.completedAt
+    return `${formatDate(range.from, {
+      month: "short"
+    })} – ${formatDate(range.to, {
+      month: "short"
+    })}`;
+  }
+
+  function calculateOverview() {
+    const range = getDateRange();
+
+    const patients = filterByRange(state.data.patients);
+    const encounters = filterByRange(state.data.encounters);
+    const queues = filterByRange(state.data.queues);
+    const consultations = filterByRange(state.data.consultations);
+    const labOrders = filterByRange(state.data.labOrders);
+    const invoices = filterByRange(state.data.invoices);
+    const payments = filterByRange(state.data.payments);
+
+    const completedQueues = queues.filter((queue) =>
+      ["completed", "done"].includes(normalizeStatus(queue.status))
     );
 
-    const completedConsultations = consultations.filter(
-      (consultation) =>
-        consultation.status === "completed" ||
-        consultation.completedAt
+    const completedConsultations = consultations.filter((consultation) =>
+      ["completed", "complete", "closed"].includes(
+        normalizeStatus(consultation.status)
+      )
     );
 
-    const completedLabOrders = labOrders.filter(
-      (order) =>
-        order.status === "completed" ||
-        order.status === "verified" ||
-        order.completedAt
-    );
+    const totalInvoiced = sum(invoices, ["total", "grandTotal", "amount"]);
+    const totalCollected = sum(payments, [
+      "amount",
+      "paidAmount",
+      "receivedAmount"
+    ]);
 
-    const totalBilled = invoices.reduce((sum, invoice) => {
-      return sum + Number(
-        invoice.grandTotal ??
-        invoice.total ??
-        invoice.amount ??
-        invoice.netAmount ??
-        0
-      );
+    const totalOutstanding = invoices.reduce((total, invoice) => {
+      const invoiceTotal = getNumber(invoice, ["total", "grandTotal", "amount"]);
+      const paid = getNumber(invoice, [
+        "paid",
+        "paidAmount",
+        "amountPaid",
+        "receivedAmount"
+      ]);
+
+      return total + Math.max(invoiceTotal - paid, 0);
     }, 0);
-
-    const totalPaid = payments.reduce((sum, payment) => {
-      return sum + Number(
-        payment.amount ??
-        payment.paidAmount ??
-        payment.total ??
-        0
-      );
-    }, 0);
-
-    const outstanding = invoices.reduce((sum, invoice) => {
-      const total = Number(
-        invoice.grandTotal ??
-        invoice.total ??
-        invoice.amount ??
-        invoice.netAmount ??
-        0
-      );
-
-      const paid = Number(
-        invoice.paidAmount ??
-        invoice.amountPaid ??
-        0
-      );
-
-      return sum + Math.max(0, total - paid);
-    }, 0);
-
-    const uniquePatientIds = new Set(
-      [
-        ...patients.map((patient) => patient.id || patient.uhid),
-        ...queues.map((queue) => queue.patientId || queue.uhid),
-        ...encounters.map((encounter) => encounter.patientId || encounter.uhid)
-      ].filter(Boolean)
-    );
-
-    const genderBreakdown = patients.reduce((accumulator, patient) => {
-      const gender = String(
-        patient.gender ||
-        patient.sex ||
-        "unknown"
-      ).toLowerCase();
-
-      accumulator[gender] = (accumulator[gender] || 0) + 1;
-
-      return accumulator;
-    }, {});
-
-    const queueByDepartment = queues.reduce((accumulator, queue) => {
-      const department =
-        queue.departmentName ||
-        queue.department ||
-        queue.service ||
-        "General";
-
-      accumulator[department] = (accumulator[department] || 0) + 1;
-
-      return accumulator;
-    }, {});
-
-    const labByStatus = labOrders.reduce((accumulator, order) => {
-      const status = order.status || "pending";
-
-      accumulator[status] = (accumulator[status] || 0) + 1;
-
-      return accumulator;
-    }, {});
-
-    const paymentByMethod = payments.reduce((accumulator, payment) => {
-      const method =
-        payment.paymentMethod ||
-        payment.method ||
-        "Other";
-
-      accumulator[method] =
-        (accumulator[method] || 0) +
-        Number(
-          payment.amount ??
-          payment.paidAmount ??
-          payment.total ??
-          0
-        );
-
-      return accumulator;
-    }, {});
-
-    const staffActivity = auditLogs.reduce((accumulator, log) => {
-      const staffId =
-        log.userId ||
-        log.staffId ||
-        log.actorId ||
-        "system";
-
-      accumulator[staffId] = (accumulator[staffId] || 0) + 1;
-
-      return accumulator;
-    }, {});
 
     return {
-      range: {
-        from: state.fromDate,
-        to: state.toDate
-      },
-
-      totals: {
-        patientsRegistered: patients.length,
-        uniquePatients: uniquePatientIds.size,
-        queueEntries: queues.length,
-        completedQueues: completedQueues.length,
-        encounters: encounters.length,
-        consultations: consultations.length,
-        completedConsultations: completedConsultations.length,
-        vitalsRecorded: vitals.length,
-        labOrders: labOrders.length,
-        completedLabOrders: completedLabOrders.length,
-        labResults: labResults.length,
-        invoices: invoices.length,
-        totalBilled,
-        totalPaid,
-        outstanding,
-        auditEvents: auditLogs.length
-      },
-
-      genderBreakdown,
-      queueByDepartment,
-      labByStatus,
-      paymentByMethod,
-      staffActivity,
-
-      records: {
-        patients,
-        queues,
-        encounters,
-        consultations,
-        vitals,
-        labOrders,
-        labResults,
-        invoices,
-        payments,
-        auditLogs
-      }
+      from: range.from,
+      to: range.to,
+      patients,
+      encounters,
+      queues,
+      consultations,
+      labOrders,
+      invoices,
+      payments,
+      completedQueues,
+      completedConsultations,
+      totalInvoiced,
+      totalCollected,
+      totalOutstanding,
+      activeStaff: state.data.staff.filter(
+        (staff) => normalizeStatus(staff.status || "active") === "active"
+      ).length
     };
   }
 
-  /* =========================================================
-     UI RENDERING
-     ========================================================= */
+  function renderShell() {
+    const container = getContainer();
 
-  function renderLoading() {
-    return `
-      <section class="page-state page-state--loading">
-        <div class="page-state__icon">
-          <span class="material-symbols-rounded">progress_activity</span>
+    if (!container) return;
+
+    container.innerHTML = `
+      <section class="reports-workspace" aria-labelledby="reports-page-title">
+        <div class="workspace-header reports-header">
+          <div class="workspace-heading">
+            <span class="eyebrow">AURA CLINIC / ANALYTICS</span>
+            <h1 id="reports-page-title">Reports & Analytics</h1>
+            <p>Operational, clinical, laboratory, and financial intelligence for ${escape(
+              getClinicName()
+            )}.</p>
+          </div>
+
+          <div class="workspace-actions">
+            <button type="button" class="btn btn-secondary" data-report-action="refresh">
+              <span aria-hidden="true">↻</span>
+              Refresh
+            </button>
+
+            <button type="button" class="btn btn-primary" data-report-action="print">
+              <span aria-hidden="true">▣</span>
+              Print Report
+            </button>
+          </div>
         </div>
-        <h3>Preparing reports</h3>
-        <p>Loading clinic data and calculating statistics.</p>
+
+        <div class="reports-control-bar">
+          <div class="reports-range-group">
+            <label for="reports-range">Reporting period</label>
+            <select id="reports-range" class="form-select">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7">Last 7 days</option>
+              <option value="last30">Last 30 days</option>
+              <option value="thisMonth">This month</option>
+              <option value="lastMonth">Last month</option>
+              <option value="thisYear">This year</option>
+              <option value="custom">Custom range</option>
+            </select>
+          </div>
+
+          <div class="reports-custom-range" data-reports-custom-range hidden>
+            <div class="reports-date-field">
+              <label for="reports-from">From</label>
+              <input type="date" id="reports-from" class="form-input">
+            </div>
+
+            <div class="reports-date-field">
+              <label for="reports-to">To</label>
+              <input type="date" id="reports-to" class="form-input">
+            </div>
+          </div>
+
+          <div class="reports-period-label">
+            <span class="reports-period-caption">Selected period</span>
+            <strong data-reports-period-label>${escape(
+              getRangeLabel()
+            )}</strong>
+          </div>
+        </div>
+
+        <div class="reports-layout">
+          <aside class="reports-sidebar" aria-label="Report navigation">
+            <div class="reports-sidebar-title">Report Library</div>
+            <nav class="reports-nav">
+              ${REPORTS.map(
+                (report) => `
+                  <button
+                    type="button"
+                    class="reports-nav-item ${
+                      state.activeReport === report.id ? "is-active" : ""
+                    }"
+                    data-report-id="${escape(report.id)}"
+                    aria-current="${
+                      state.activeReport === report.id ? "page" : "false"
+                    }"
+                  >
+                    <span class="reports-nav-icon" aria-hidden="true">${escape(
+                      report.icon
+                    )}</span>
+                    <span class="reports-nav-copy">
+                      <strong>${escape(report.label)}</strong>
+                      <small>${escape(report.description)}</small>
+                    </span>
+                  </button>
+                `
+              ).join("")}
+            </nav>
+          </aside>
+
+          <main class="reports-content" data-reports-content>
+            ${renderReportContent()}
+          </main>
+        </div>
       </section>
+    `;
+
+    bindEvents();
+  }
+
+  function renderReportContent() {
+    if (state.loading) {
+      return `
+        <div class="reports-loading">
+          <div class="loading-spinner" aria-hidden="true"></div>
+          <p>Loading report data…</p>
+        </div>
+      `;
+    }
+
+    const report = REPORTS.find((item) => item.id === state.activeReport);
+
+    return `
+      <div class="reports-content-header">
+        <div>
+          <span class="eyebrow">REPORT</span>
+          <h2>${escape(report?.label || "Report")}</h2>
+          <p>${escape(report?.description || "")}</p>
+        </div>
+
+        <div class="reports-content-meta">
+          <span class="reports-meta-label">Period</span>
+          <strong>${escape(getRangeLabel())}</strong>
+        </div>
+      </div>
+
+      ${renderActiveReport()}
     `;
   }
 
-  function renderEmptyState() {
-    return `
-      <section class="page-state">
-        <div class="page-state__icon">
-          <span class="material-symbols-rounded">analytics</span>
-        </div>
-        <h3>No report data available</h3>
-        <p>Try selecting a different date range or add clinic records first.</p>
-      </section>
-    `;
+  function renderActiveReport() {
+    switch (state.activeReport) {
+      case "patients":
+        return renderPatientsReport();
+
+      case "clinical":
+        return renderClinicalReport();
+
+      case "laboratory":
+        return renderLaboratoryReport();
+
+      case "financial":
+        return renderFinancialReport();
+
+      case "staff":
+        return renderStaffReport();
+
+      case "audit":
+        return renderAuditReport();
+
+      case "overview":
+      default:
+        return renderOverviewReport();
+    }
   }
 
-  function renderStatCard(icon, label, value, caption = "") {
+  function renderMetricCard(label, value, caption, icon, modifier = "") {
     return `
-      <article class="metric-card">
-        <div class="metric-card__icon">
-          <span class="material-symbols-rounded">${escapeHtml(icon)}</span>
+      <article class="report-metric-card ${escape(modifier)}">
+        <div class="report-metric-topline">
+          <span class="report-metric-icon" aria-hidden="true">${escape(icon)}</span>
+          <span class="report-metric-caption">${escape(caption)}</span>
         </div>
-        <div class="metric-card__body">
-          <span class="metric-card__label">${escapeHtml(label)}</span>
-          <strong class="metric-card__value">${escapeHtml(value)}</strong>
-          ${
-            caption
-              ? `<span class="metric-card__caption">${escapeHtml(caption)}</span>`
-              : ""
-          }
-        </div>
+        <strong class="report-metric-value">${escape(value)}</strong>
+        <span class="report-metric-label">${escape(label)}</span>
       </article>
     `;
   }
 
-  function renderProgressBar(label, value, total, suffix = "") {
-    const percentage = total > 0
-      ? Math.min(100, Math.round((value / total) * 100))
-      : 0;
-
+  function renderSectionHeader(title, description, action = "") {
     return `
-      <div class="report-progress-row">
-        <div class="report-progress-row__top">
-          <span>${escapeHtml(label)}</span>
-          <strong>${escapeHtml(formatNumber(value))}${suffix}</strong>
-        </div>
-        <div class="report-progress">
-          <span style="width:${percentage}%"></span>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderHeader() {
-    return `
-      <div class="page-header">
+      <div class="report-section-header">
         <div>
-          <div class="eyebrow">
-            <span class="material-symbols-rounded">analytics</span>
-            Operations Intelligence
-          </div>
-
-          <h1>Reports & Analytics</h1>
-
-          <p class="page-header__subtitle">
-            Monitor patient flow, clinical activity, diagnostics, and revenue.
-          </p>
+          <h3>${escape(title)}</h3>
+          <p>${escape(description)}</p>
         </div>
-
-        <div class="page-header__actions">
-          <button
-            class="btn btn-secondary"
-            type="button"
-            data-report-action="print"
-          >
-            <span class="material-symbols-rounded">print</span>
-            Print
-          </button>
-
-          <button
-            class="btn btn-primary"
-            type="button"
-            data-report-action="export"
-          >
-            <span class="material-symbols-rounded">download</span>
-            Export CSV
-          </button>
-        </div>
+        ${action}
       </div>
     `;
   }
 
-  function renderFilters() {
-    const today = todayISO();
+  function renderOverviewReport() {
+    const summary = calculateOverview();
+    const queueByStatus = countBy(summary.queues, (queue) =>
+      String(queue.status || "unknown")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    );
+
+    const labByStatus = countBy(summary.labOrders, (order) =>
+      String(order.status || "unknown")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    );
+
+    const recentActivity = sortByDate(
+      [
+        ...summary.encounters.map((item) => ({
+          ...item,
+          activityType: "Encounter",
+          activityDate: getRecordDate(item)
+        })),
+        ...summary.consultations.map((item) => ({
+          ...item,
+          activityType: "Consultation",
+          activityDate: getRecordDate(item)
+        })),
+        ...summary.labOrders.map((item) => ({
+          ...item,
+          activityType: "Laboratory order",
+          activityDate: getRecordDate(item)
+        })),
+        ...summary.payments.map((item) => ({
+          ...item,
+          activityType: "Payment",
+          activityDate: getRecordDate(item)
+        }))
+      ],
+      true
+    ).slice(0, 8);
 
     return `
-      <section class="card reports-filter-card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Report Filters</h2>
-            <p class="card__subtitle">
-              Select a date range and report category.
-            </p>
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "New Patients",
+          formatNumber(summary.patients.length),
+          "Registrations",
+          "♙"
+        )}
+
+        ${renderMetricCard(
+          "Encounters",
+          formatNumber(summary.encounters.length),
+          "Clinical records",
+          "✚"
+        )}
+
+        ${renderMetricCard(
+          "Consultations",
+          formatNumber(summary.consultations.length),
+          "Doctor activity",
+          "◉"
+        )}
+
+        ${renderMetricCard(
+          "Laboratory Orders",
+          formatNumber(summary.labOrders.length),
+          "Diagnostic requests",
+          "⌬"
+        )}
+
+        ${renderMetricCard(
+          "Collected",
+          formatCurrency(summary.totalCollected),
+          "Payments received",
+          "₹",
+          "is-positive"
+        )}
+
+        ${renderMetricCard(
+          "Outstanding",
+          formatCurrency(summary.totalOutstanding),
+          "Pending balance",
+          "◌",
+          "is-warning"
+        )}
+      </div>
+
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Queue Activity",
+            "Patient movement across the clinic workflow."
+          )}
+
+          <div class="report-breakdown-list">
+            ${
+              Object.keys(queueByStatus).length
+                ? Object.entries(queueByStatus)
+                    .map(
+                      ([status, count]) => `
+                        <div class="report-breakdown-row">
+                          <span>${escape(status)}</span>
+                          <strong>${formatNumber(count)}</strong>
+                        </div>
+                      `
+                    )
+                    .join("")
+                : renderEmptyState("No queue records for this period.")
+            }
           </div>
+        </section>
 
-          <button
-            class="btn btn-ghost btn-sm"
-            type="button"
-            data-report-action="today"
-          >
-            Today
-          </button>
-        </div>
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Laboratory Pipeline",
+            "Current order distribution within the selected period."
+          )}
 
-        <div class="form-grid form-grid--three">
-          <label class="form-field">
-            <span class="form-label">From Date</span>
-            <input
-              class="form-control"
-              type="date"
-              id="reports-from-date"
-              value="${escapeHtml(state.fromDate || today)}"
-            />
-          </label>
+          <div class="report-breakdown-list">
+            ${
+              Object.keys(labByStatus).length
+                ? Object.entries(labByStatus)
+                    .map(
+                      ([status, count]) => `
+                        <div class="report-breakdown-row">
+                          <span>${escape(status)}</span>
+                          <strong>${formatNumber(count)}</strong>
+                        </div>
+                      `
+                    )
+                    .join("")
+                : renderEmptyState("No laboratory orders for this period.")
+            }
+          </div>
+        </section>
+      </div>
 
-          <label class="form-field">
-            <span class="form-label">To Date</span>
-            <input
-              class="form-control"
-              type="date"
-              id="reports-to-date"
-              value="${escapeHtml(state.toDate || today)}"
-            />
-          </label>
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Recent Activity",
+          "Latest clinical, diagnostic, and payment events."
+        )}
 
-          <label class="form-field">
-            <span class="form-label">Report Type</span>
-            <select class="form-control" id="reports-report-type">
-              <option value="overview" ${
-                state.reportType === "overview" ? "selected" : ""
-              }>
-                Overview
-              </option>
-              <option value="patients" ${
-                state.reportType === "patients" ? "selected" : ""
-              }>
-                Patients
-              </option>
-              <option value="clinical" ${
-                state.reportType === "clinical" ? "selected" : ""
-              }>
-                Clinical
-              </option>
-              <option value="laboratory" ${
-                state.reportType === "laboratory" ? "selected" : ""
-              }>
-                Laboratory
-              </option>
-              <option value="billing" ${
-                state.reportType === "billing" ? "selected" : ""
-              }>
-                Billing
-              </option>
-              <option value="staff" ${
-                state.reportType === "staff" ? "selected" : ""
-              }>
-                Staff Activity
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <div class="reports-filter-card__footer">
-          <span class="status-badge status-neutral">
-            <span class="material-symbols-rounded">calendar_month</span>
-            ${formatDate(state.fromDate)} – ${formatDate(state.toDate)}
-          </span>
-
-          <button
-            class="btn btn-primary btn-sm"
-            type="button"
-            data-report-action="apply"
-          >
-            <span class="material-symbols-rounded">refresh</span>
-            Apply Filters
-          </button>
-        </div>
+        ${renderActivityTable(recentActivity)}
       </section>
     `;
   }
 
-  function renderOverview(data) {
-    const totals = data.totals;
+  function renderPatientsReport() {
+    const patients = filterByRange(state.data.patients);
+    const genderCounts = countBy(patients, (patient) => patient.gender || "Not specified");
+    const bloodGroups = countBy(patients, (patient) => patient.bloodGroup || "Not specified");
 
-    const completionRate =
-      totals.queueEntries > 0
-        ? Math.round((totals.completedQueues / totals.queueEntries) * 100)
-        : 0;
+    const withPhone = patients.filter((patient) => patient.phone).length;
+    const withEmail = patients.filter((patient) => patient.email).length;
 
-    const collectionRate =
-      totals.totalBilled > 0
-        ? Math.round((totals.totalPaid / totals.totalBilled) * 100)
-        : 0;
+    const latestPatients = sortByDate(patients).slice(0, 12);
 
     return `
-      <section class="metrics-grid metrics-grid--four">
-        ${renderStatCard(
-          "person_add",
-          "Patients Registered",
-          formatNumber(totals.patientsRegistered),
-          `${formatNumber(totals.uniquePatients)} unique patients`
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "Registered Patients",
+          formatNumber(patients.length),
+          "Selected period",
+          "♙"
         )}
 
-        ${renderStatCard(
-          "medical_services",
-          "Clinical Encounters",
-          formatNumber(totals.encounters),
-          `${formatNumber(totals.completedConsultations)} consultations completed`
+        ${renderMetricCard(
+          "Phone Available",
+          formatNumber(withPhone),
+          "Contact records",
+          "☎"
         )}
 
-        ${renderStatCard(
-          "science",
-          "Lab Orders",
-          formatNumber(totals.labOrders),
-          `${formatNumber(totals.completedLabOrders)} completed`
+        ${renderMetricCard(
+          "Email Available",
+          formatNumber(withEmail),
+          "Contact records",
+          "✉"
         )}
 
-        ${renderStatCard(
-          "payments",
-          "Revenue Collected",
-          formatCurrency(totals.totalPaid),
-          `${formatCurrency(totals.outstanding)} outstanding`
+        ${renderMetricCard(
+          "Unique Gender Values",
+          formatNumber(Object.keys(genderCounts).length),
+          "Recorded categories",
+          "◌"
         )}
-      </section>
+      </div>
 
-      <section class="reports-grid reports-grid--two">
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Patient & Clinical Activity</h2>
-              <p class="card__subtitle">Operational activity during the selected period.</p>
-            </div>
-          </div>
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Gender Distribution",
+            "Patient registration distribution by recorded gender."
+          )}
 
-          <div class="report-progress-list">
-            ${renderProgressBar(
-              "Queue Completion",
-              totals.completedQueues,
-              totals.queueEntries
-            )}
+          ${renderDistributionList(genderCounts)}
+        </section>
 
-            ${renderProgressBar(
-              "Consultation Completion",
-              totals.completedConsultations,
-              totals.consultations
-            )}
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Blood Group Distribution",
+            "Recorded blood group information."
+          )}
 
-            ${renderProgressBar(
-              "Laboratory Completion",
-              totals.completedLabOrders,
-              totals.labOrders
-            )}
+          ${renderDistributionList(bloodGroups)}
+        </section>
+      </div>
 
-            ${renderProgressBar(
-              "Payment Collection",
-              totals.totalPaid,
-              totals.totalBilled,
-              "%"
-            )}
-          </div>
-        </article>
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Latest Patient Registrations",
+          "Most recent patient records in the selected period."
+        )}
 
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Financial Snapshot</h2>
-              <p class="card__subtitle">Billing and collection performance.</p>
-            </div>
-          </div>
-
-          <div class="report-summary-list">
-            <div class="report-summary-item">
-              <span>Total Invoices</span>
-              <strong>${formatNumber(totals.invoices)}</strong>
-            </div>
-
-            <div class="report-summary-item">
-              <span>Total Billed</span>
-              <strong>${formatCurrency(totals.totalBilled)}</strong>
-            </div>
-
-            <div class="report-summary-item">
-              <span>Total Collected</span>
-              <strong>${formatCurrency(totals.totalPaid)}</strong>
-            </div>
-
-            <div class="report-summary-item">
-              <span>Outstanding Balance</span>
-              <strong>${formatCurrency(totals.outstanding)}</strong>
-            </div>
-          </div>
-
-          <div class="report-highlight">
-            <span class="material-symbols-rounded">account_balance_wallet</span>
-            <div>
-              <strong>${collectionRate}% collection rate</strong>
-              <p>Based on billed versus paid amounts.</p>
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <section class="reports-grid reports-grid--two">
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Queue by Department</h2>
-              <p class="card__subtitle">Patient movement across departments.</p>
-            </div>
-          </div>
-
-          <div class="report-list">
-            ${renderDepartmentRows(data.queueByDepartment)}
-          </div>
-        </article>
-
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Laboratory Status</h2>
-              <p class="card__subtitle">Diagnostic orders by current status.</p>
-            </div>
-          </div>
-
-          <div class="report-list">
-            ${renderStatusRows(data.labByStatus)}
-          </div>
-        </article>
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Payment Methods</h2>
-            <p class="card__subtitle">Collection distribution by payment method.</p>
-          </div>
-        </div>
-
-        <div class="report-table-wrap">
-          ${renderPaymentTable(data.paymentByMethod)}
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Operational Summary</h2>
-            <p class="card__subtitle">Key activities recorded in the system.</p>
-          </div>
-        </div>
-
-        <div class="report-summary-grid">
-          <div class="report-summary-item">
-            <span>Vitals Recorded</span>
-            <strong>${formatNumber(totals.vitalsRecorded)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Lab Results</span>
-            <strong>${formatNumber(totals.labResults)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Audit Events</span>
-            <strong>${formatNumber(totals.auditEvents)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Queue Completion Rate</span>
-            <strong>${completionRate}%</strong>
-          </div>
-        </div>
+        ${renderPatientTable(latestPatients)}
       </section>
     `;
   }
 
-  function renderDepartmentRows(departments) {
-    const entries = Object.entries(departments || {})
-      .sort((a, b) => b[1] - a[1]);
+  function renderClinicalReport() {
+    const encounters = filterByRange(state.data.encounters);
+    const consultations = filterByRange(state.data.consultations);
+    const prescriptions = filterByRange(state.data.prescriptions);
+    const vitals = filterByRange(state.data.vitals);
+
+    const doctorCounts = countBy(consultations, (consultation) =>
+      getStaffLabel(
+        consultation.doctorId ||
+          consultation.doctor_id ||
+          consultation.staffId ||
+          consultation.providerId
+      )
+    );
+
+    const diagnosisCounts = countBy(consultations, (consultation) =>
+      consultation.diagnosis ||
+      consultation.primaryDiagnosis ||
+      consultation.assessment ||
+      "Not documented"
+    );
+
+    const completed = consultations.filter((consultation) =>
+      ["completed", "complete", "closed"].includes(
+        normalizeStatus(consultation.status)
+      )
+    ).length;
+
+    const uniquePatients = uniqueCount(
+      [...encounters, ...consultations],
+      (record) =>
+        record.patientId ||
+        record.patient_id ||
+        record.uhid ||
+        record.patientUHID
+    );
+
+    return `
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "Encounters",
+          formatNumber(encounters.length),
+          "Clinical records",
+          "✚"
+        )}
+
+        ${renderMetricCard(
+          "Consultations",
+          formatNumber(consultations.length),
+          "Doctor records",
+          "◉"
+        )}
+
+        ${renderMetricCard(
+          "Completed",
+          formatNumber(completed),
+          "Closed consultations",
+          "✓",
+          "is-positive"
+        )}
+
+        ${renderMetricCard(
+          "Vitals Records",
+          formatNumber(vitals.length),
+          "Nursing activity",
+          "♥"
+        )}
+
+        ${renderMetricCard(
+          "Prescriptions",
+          formatNumber(prescriptions.length),
+          "Medication records",
+          "Rx"
+        )}
+
+        ${renderMetricCard(
+          "Unique Patients",
+          formatNumber(uniquePatients),
+          "Clinical population",
+          "♙"
+        )}
+      </div>
+
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Consultations by Doctor",
+            "Distribution of consultations by assigned provider."
+          )}
+
+          ${renderDistributionList(doctorCounts)}
+        </section>
+
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Recorded Diagnoses",
+            "Most frequently recorded assessment or diagnosis values."
+          )}
+
+          ${renderDistributionList(diagnosisCounts, 10)}
+        </section>
+      </div>
+
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Recent Clinical Activity",
+          "Latest encounters and consultations."
+        )}
+
+        ${renderClinicalTable(
+          sortByDate([...encounters, ...consultations]).slice(0, 15)
+        )}
+      </section>
+    `;
+  }
+
+  function renderLaboratoryReport() {
+    const orders = filterByRange(state.data.labOrders);
+    const results = filterByRange(state.data.labResults);
+
+    const orderStatus = countBy(orders, (order) => order.status || "Unknown");
+    const testCounts = countBy(
+      orders,
+      (order) =>
+        order.testName ||
+        order.serviceName ||
+        order.test ||
+        order.panelName ||
+        "Unnamed test"
+    );
+
+    const verifiedResults = results.filter((result) =>
+      ["verified", "approved", "completed"].includes(
+        normalizeStatus(result.status)
+      )
+    ).length;
+
+    const pendingOrders = orders.filter((order) =>
+      ["pending", "ordered", "processing", "in-progress", "collected"].includes(
+        normalizeStatus(order.status)
+      )
+    ).length;
+
+    return `
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "Laboratory Orders",
+          formatNumber(orders.length),
+          "Selected period",
+          "⌬"
+        )}
+
+        ${renderMetricCard(
+          "Pending Orders",
+          formatNumber(pendingOrders),
+          "Awaiting completion",
+          "◌",
+          "is-warning"
+        )}
+
+        ${renderMetricCard(
+          "Results Recorded",
+          formatNumber(results.length),
+          "Diagnostic results",
+          "▤"
+        )}
+
+        ${renderMetricCard(
+          "Verified Results",
+          formatNumber(verifiedResults),
+          "Completed reports",
+          "✓",
+          "is-positive"
+        )}
+      </div>
+
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Order Status",
+            "Laboratory order distribution."
+          )}
+
+          ${renderDistributionList(orderStatus)}
+        </section>
+
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Most Ordered Tests",
+            "Tests and panels requested during the selected period."
+          )}
+
+          ${renderDistributionList(testCounts, 10)}
+        </section>
+      </div>
+
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Laboratory Orders",
+          "Recent diagnostic requests and their current status."
+        )}
+
+        ${renderLaboratoryTable(sortByDate(orders).slice(0, 20))}
+      </section>
+    `;
+  }
+
+  function renderFinancialReport() {
+    const invoices = filterByRange(state.data.invoices);
+    const payments = filterByRange(state.data.payments);
+
+    const invoiced = sum(invoices, ["total", "grandTotal", "amount"]);
+    const collected = sum(payments, [
+      "amount",
+      "paidAmount",
+      "receivedAmount"
+    ]);
+
+    const outstanding = invoices.reduce((total, invoice) => {
+      const invoiceTotal = getNumber(invoice, ["total", "grandTotal", "amount"]);
+      const paid = getNumber(invoice, [
+        "paid",
+        "paidAmount",
+        "amountPaid",
+        "receivedAmount"
+      ]);
+
+      return total + Math.max(invoiceTotal - paid, 0);
+    }, 0);
+
+    const paymentMethods = countBy(
+      payments,
+      (payment) => payment.method || payment.paymentMethod || "Other"
+    );
+
+    const invoiceStatuses = countBy(
+      invoices,
+      (invoice) => invoice.status || "Unknown"
+    );
+
+    const averageInvoice = invoices.length ? invoiced / invoices.length : 0;
+
+    return `
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "Total Invoiced",
+          formatCurrency(invoiced),
+          "Gross billing",
+          "₹"
+        )}
+
+        ${renderMetricCard(
+          "Total Collected",
+          formatCurrency(collected),
+          "Payments received",
+          "₹",
+          "is-positive"
+        )}
+
+        ${renderMetricCard(
+          "Outstanding",
+          formatCurrency(outstanding),
+          "Pending balances",
+          "◌",
+          "is-warning"
+        )}
+
+        ${renderMetricCard(
+          "Average Invoice",
+          formatCurrency(averageInvoice),
+          "Per invoice",
+          "▤"
+        )}
+
+        ${renderMetricCard(
+          "Invoices",
+          formatNumber(invoices.length),
+          "Generated documents",
+          "▧"
+        )}
+
+        ${renderMetricCard(
+          "Payments",
+          formatNumber(payments.length),
+          "Transactions",
+          "↗"
+        )}
+      </div>
+
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Invoice Status",
+            "Distribution of invoices by current status."
+          )}
+
+          ${renderDistributionList(invoiceStatuses)}
+        </section>
+
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Payment Methods",
+            "Payment collection by method."
+          )}
+
+          ${renderDistributionList(paymentMethods)}
+        </section>
+      </div>
+
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Recent Financial Activity",
+          "Latest invoices and payments."
+        )}
+
+        ${renderFinancialTable(
+          sortByDate([...invoices, ...payments]).slice(0, 20)
+        )}
+      </section>
+    `;
+  }
+
+  function renderStaffReport() {
+    const staff = state.data.staff || [];
+    const activeStaff = staff.filter(
+      (member) => normalizeStatus(member.status || "active") === "active"
+    );
+
+    const departmentCounts = countBy(
+      staff,
+      (member) => member.department || "Not assigned"
+    );
+
+    const roleCounts = countBy(
+      staff,
+      (member) => member.role || member.designation || "Not assigned"
+    );
+
+    const statusCounts = countBy(
+      staff,
+      (member) => member.status || "active"
+    );
+
+    const recentlyUpdated = sortByDate(staff).slice(0, 15);
+
+    return `
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "Total Staff",
+          formatNumber(staff.length),
+          "Registered staff",
+          "♧"
+        )}
+
+        ${renderMetricCard(
+          "Active Staff",
+          formatNumber(activeStaff.length),
+          "Currently active",
+          "✓",
+          "is-positive"
+        )}
+
+        ${renderMetricCard(
+          "Departments",
+          formatNumber(Object.keys(departmentCounts).length),
+          "Operational units",
+          "▦"
+        )}
+
+        ${renderMetricCard(
+          "Roles",
+          formatNumber(Object.keys(roleCounts).length),
+          "Assigned roles",
+          "♙"
+        )}
+      </div>
+
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Staff by Department",
+            "Workforce distribution across departments."
+          )}
+
+          ${renderDistributionList(departmentCounts)}
+        </section>
+
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Staff by Status",
+            "Current staff account status."
+          )}
+
+          ${renderDistributionList(statusCounts)}
+        </section>
+      </div>
+
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Staff Directory",
+          "Recently created or updated staff records."
+        )}
+
+        ${renderStaffTable(recentlyUpdated)}
+      </section>
+    `;
+  }
+
+  function renderAuditReport() {
+    const logs = filterByRange(state.data.auditLogs);
+
+    const actionCounts = countBy(
+      logs,
+      (log) => log.action || log.event || log.type || "Unknown action"
+    );
+
+    const actorCounts = countBy(
+      logs,
+      (log) =>
+        log.actorName ||
+        log.userName ||
+        log.staffName ||
+        getStaffLabel(log.actorId || log.userId) ||
+        "System"
+    );
+
+    return `
+      <div class="report-metric-grid">
+        ${renderMetricCard(
+          "Audit Events",
+          formatNumber(logs.length),
+          "Selected period",
+          "◷"
+        )}
+
+        ${renderMetricCard(
+          "Unique Actions",
+          formatNumber(Object.keys(actionCounts).length),
+          "Recorded event types",
+          "▤"
+        )}
+
+        ${renderMetricCard(
+          "Active Actors",
+          formatNumber(Object.keys(actorCounts).length),
+          "Users and staff",
+          "♙"
+        )}
+
+        ${renderMetricCard(
+          "Latest Event",
+          logs.length ? formatDate(sortByDate(logs)[0].createdAt || sortByDate(logs)[0].timestamp) : "—",
+          "Most recent activity",
+          "↻"
+        )}
+      </div>
+
+      <div class="reports-two-column">
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Audit Actions",
+            "Distribution of recorded administrative events."
+          )}
+
+          ${renderDistributionList(actionCounts, 12)}
+        </section>
+
+        <section class="report-panel">
+          ${renderSectionHeader(
+            "Activity by Actor",
+            "Users or staff generating audit events."
+          )}
+
+          ${renderDistributionList(actorCounts, 12)}
+        </section>
+      </div>
+
+      <section class="report-panel">
+        ${renderSectionHeader(
+          "Audit Timeline",
+          "Detailed activity records for the selected period."
+        )}
+
+        ${renderAuditTable(sortByDate(logs).slice(0, 50))}
+      </section>
+    `;
+  }
+
+  function renderDistributionList(counts, limit = 12) {
+    const entries = Object.entries(counts || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit);
 
     if (!entries.length) {
-      return `<div class="empty-state-inline">No department data available.</div>`;
+      return renderEmptyState("No data available for this period.");
     }
 
-    const total = entries.reduce((sum, [, value]) => sum + value, 0);
+    const maximum = Math.max(...entries.map((entry) => entry[1]), 1);
 
-    return entries.map(([department, count]) => {
-      const percentage = total > 0
-        ? Math.round((count / total) * 100)
-        : 0;
+    return `
+      <div class="report-distribution-list">
+        ${entries
+          .map(
+            ([label, value]) => `
+              <div class="report-distribution-row">
+                <div class="report-distribution-label">
+                  <span>${escape(label)}</span>
+                  <strong>${formatNumber(value)}</strong>
+                </div>
+                <div class="report-distribution-track">
+                  <span style="width:${Math.round((value / maximum) * 100)}%"></span>
+                </div>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderEmptyState(message) {
+    return `
+      <div class="report-empty-state">
+        <span class="report-empty-icon" aria-hidden="true">⌁</span>
+        <p>${escape(message)}</p>
+      </div>
+    `;
+  }
+
+  function renderPatientTable(patients) {
+    if (!patients.length) {
+      return renderEmptyState("No patient registrations found.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>UHID</th>
+              <th>Gender</th>
+              <th>Phone</th>
+              <th>Registered</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${patients
+              .map(
+                (patient) => `
+                  <tr>
+                    <td>
+                      <strong>${escape(getPatientName(patient))}</strong>
+                    </td>
+                    <td>${escape(patient.uhid || patient.patientId || "—")}</td>
+                    <td>${escape(patient.gender || "—")}</td>
+                    <td>${escape(patient.phone || "—")}</td>
+                    <td>${escape(formatDate(getRecordDate(patient)))}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderClinicalTable(records) {
+    if (!records.length) {
+      return renderEmptyState("No clinical activity found.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Patient</th>
+              <th>Record Type</th>
+              <th>Doctor</th>
+              <th>Status</th>
+              <th>Diagnosis / Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records
+              .map((record) => {
+                const type = record.consultationDate || record.diagnosis
+                  ? "Consultation"
+                  : "Encounter";
+
+                const diagnosis =
+                  record.diagnosis ||
+                  record.primaryDiagnosis ||
+                  record.assessment ||
+                  record.chiefComplaint ||
+                  record.notes ||
+                  "—";
+
+                return `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(record)))}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        record.patientId ||
+                          record.patient_id ||
+                          record.uhid ||
+                          record.patientUHID
+                      )
+                    )}</td>
+                    <td>${escape(type)}</td>
+                    <td>${escape(
+                      getStaffLabel(
+                        record.doctorId ||
+                          record.doctor_id ||
+                          record.staffId ||
+                          record.providerId
+                      )
+                    )}</td>
+                    <td>${statusBadge(record.status || "Recorded")}</td>
+                    <td>${escape(String(diagnosis).slice(0, 80))}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderLaboratoryTable(orders) {
+    if (!orders.length) {
+      return renderEmptyState("No laboratory orders found.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Order Date</th>
+              <th>Patient</th>
+              <th>Test / Panel</th>
+              <th>Ordered By</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orders
+              .map(
+                (order) => `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(order)))}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        order.patientId ||
+                          order.patient_id ||
+                          order.uhid ||
+                          order.patientUHID
+                      )
+                    )}</td>
+                    <td>${escape(
+                      order.testName ||
+                        order.serviceName ||
+                        order.test ||
+                        order.panelName ||
+                        "Unnamed test"
+                    )}</td>
+                    <td>${escape(
+                      getStaffLabel(
+                        order.doctorId ||
+                          order.doctor_id ||
+                          order.orderedBy ||
+                          order.createdBy
+                      )
+                    )}</td>
+                    <td>${statusBadge(order.status || "Unknown")}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderFinancialTable(records) {
+    if (!records.length) {
+      return renderEmptyState("No financial activity found.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Reference</th>
+              <th>Patient</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records
+              .map((record) => {
+                const isPayment =
+                  record.paymentMethod ||
+                  record.method ||
+                  record.receivedAmount !== undefined ||
+                  record.invoiceId;
+
+                const amount = isPayment
+                  ? getNumber(record, [
+                      "amount",
+                      "paidAmount",
+                      "receivedAmount"
+                    ])
+                  : getNumber(record, ["total", "grandTotal", "amount"]);
+
+                return `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(record)))}</td>
+                    <td>${escape(
+                      record.invoiceNumber ||
+                        record.invoiceNo ||
+                        record.reference ||
+                        record.id ||
+                        "—"
+                    )}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        record.patientId ||
+                          record.patient_id ||
+                          record.uhid ||
+                          record.patientUHID
+                      )
+                    )}</td>
+                    <td>${isPayment ? "Payment" : "Invoice"}</td>
+                    <td><strong>${escape(formatCurrency(amount))}</strong></td>
+                    <td>${statusBadge(record.status || "Recorded")}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderStaffTable(staff) {
+    if (!staff.length) {
+      return renderEmptyState("No staff records found.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Staff ID</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Department</th>
+              <th>Status</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${staff
+              .map(
+                (member) => `
+                  <tr>
+                    <td>${escape(member.staffId || member.id || "—")}</td>
+                    <td><strong>${escape(getStaffName(member))}</strong></td>
+                    <td>${escape(member.role || member.designation || "—")}</td>
+                    <td>${escape(member.department || "—")}</td>
+                    <td>${statusBadge(member.status || "active")}</td>
+                    <td>${escape(formatDate(getRecordDate(member)))}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderAuditTable(logs) {
+    if (!logs.length) {
+      return renderEmptyState("No audit events found.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Date & Time</th>
+              <th>Actor</th>
+              <th>Action</th>
+              <th>Module</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs
+              .map(
+                (log) => `
+                  <tr>
+                    <td>${escape(
+                      formatDate(getRecordDate(log), {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      })
+                    )}</td>
+                    <td>${escape(
+                      log.actorName ||
+                        log.userName ||
+                        log.staffName ||
+                        getStaffLabel(log.actorId || log.userId) ||
+                        "System"
+                    )}</td>
+                    <td>${escape(
+                      log.action || log.event || log.type || "Unknown"
+                    )}</td>
+                    <td>${escape(log.module || log.source || "—")}</td>
+                    <td>${escape(
+                      String(
+                        log.description ||
+                          log.details ||
+                          log.message ||
+                          ""
+                      ).slice(0, 100)
+                    )}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderActivityTable(records) {
+    if (!records.length) {
+      return renderEmptyState("No activity found for this period.");
+    }
+
+    return `
+      <div class="report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>Date & Time</th>
+              <th>Activity</th>
+              <th>Patient</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records
+              .map(
+                (record) => `
+                  <tr>
+                    <td>${escape(
+                      formatDate(record.activityDate || getRecordDate(record), {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                      })
+                    )}</td>
+                    <td>${escape(record.activityType || "Activity")}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        record.patientId ||
+                          record.patient_id ||
+                          record.uhid ||
+                          record.patientUHID
+                      )
+                    )}</td>
+                    <td>${escape(
+                      record.invoiceNumber ||
+                        record.invoiceNo ||
+                        record.orderNumber ||
+                        record.reference ||
+                        record.id ||
+                        "—"
+                    )}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function updateContent() {
+    const content = document.querySelector("[data-reports-content]");
+
+    if (!content) {
+      renderShell();
+      return;
+    }
+
+    content.innerHTML = renderReportContent();
+    updatePeriodLabel();
+  }
+
+  function updatePeriodLabel() {
+    const label = document.querySelector("[data-reports-period-label]");
+
+    if (label) {
+      label.textContent = getRangeLabel();
+    }
+  }
+
+  function bindEvents() {
+    const container = getContainer();
+
+    if (!container || container.dataset.reportsBound === "true") {
+      return;
+    }
+
+    container.dataset.reportsBound = "true";
+
+    container.addEventListener("click", handleClick);
+    container.addEventListener("change", handleChange);
+
+    container.addEventListener("input", handleInput);
+  }
+
+  function handleClick(event) {
+    const reportButton = event.target.closest("[data-report-id]");
+
+    if (reportButton) {
+      event.preventDefault();
+
+      const reportId = reportButton.dataset.reportId;
+
+      if (REPORTS.some((report) => report.id === reportId)) {
+        state.activeReport = reportId;
+
+        document
+          .querySelectorAll("[data-report-id]")
+          .forEach((button) => {
+            const active = button.dataset.reportId === reportId;
+
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-current", active ? "page" : "false");
+          });
+
+        updateContent();
+      }
+
+      return;
+    }
+
+    const actionButton = event.target.closest("[data-report-action]");
+
+    if (!actionButton) return;
+
+    const action = actionButton.dataset.reportAction;
+
+    if (action === "refresh") {
+      refresh();
+      return;
+    }
+
+    if (action === "print") {
+      printReport();
+      return;
+    }
+  }
+
+  function handleChange(event) {
+    if (event.target.id === "reports-range") {
+      state.range = event.target.value;
+
+      const customRange = document.querySelector("[data-reports-custom-range]");
+
+      if (customRange) {
+        customRange.hidden = state.range !== "custom";
+      }
+
+      updateContent();
+      return;
+    }
+
+    if (event.target.id === "reports-from") {
+      state.customFrom = event.target.value;
+      updateContent();
+      return;
+    }
+
+    if (event.target.id === "reports-to") {
+      state.customTo = event.target.value;
+      updateContent();
+    }
+  }
+
+  function handleInput(event) {
+    if (event.target.matches("[data-report-search]")) {
+      state.search = event.target.value.trim().toLowerCase();
+      updateContent();
+    }
+  }
+
+  async function refresh() {
+    await loadData();
+    renderShell();
+    showToast("Reports refreshed.", "success");
+  }
+
+  function getPrintStyles() {
+    return `
+      <style>
+        @page {
+          size: A4;
+          margin: 14mm;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          font-family: Arial, sans-serif;
+          color: #111827;
+          margin: 0;
+          font-size: 11px;
+        }
+
+        h1, h2, h3, p {
+          margin: 0;
+        }
+
+        .print-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #111827;
+          padding-bottom: 12px;
+          margin-bottom: 20px;
+        }
+
+        .print-header h1 {
+          font-size: 22px;
+          margin-bottom: 6px;
+        }
+
+        .print-header p {
+          color: #4b5563;
+          font-size: 11px;
+        }
+
+        .print-meta {
+          text-align: right;
+          color: #4b5563;
+        }
+
+        .print-meta strong {
+          display: block;
+          color: #111827;
+          margin-bottom: 4px;
+        }
+
+        .print-metrics {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+
+        .print-metric {
+          border: 1px solid #d1d5db;
+          padding: 10px;
+          border-radius: 6px;
+        }
+
+        .print-metric strong {
+          display: block;
+          font-size: 17px;
+          margin-bottom: 4px;
+        }
+
+        .print-metric span {
+          color: #4b5563;
+          font-size: 10px;
+        }
+
+        .print-section {
+          margin-bottom: 20px;
+          page-break-inside: avoid;
+        }
+
+        .print-section h2 {
+          font-size: 14px;
+          border-bottom: 1px solid #9ca3af;
+          padding-bottom: 6px;
+          margin-bottom: 8px;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 8px;
+        }
+
+        th,
+        td {
+          border: 1px solid #d1d5db;
+          padding: 6px 7px;
+          text-align: left;
+          vertical-align: top;
+        }
+
+        th {
+          background: #f3f4f6;
+          font-weight: 700;
+        }
+
+        .print-footer {
+          border-top: 1px solid #d1d5db;
+          padding-top: 8px;
+          margin-top: 25px;
+          color: #6b7280;
+          font-size: 9px;
+          display: flex;
+          justify-content: space-between;
+        }
+
+        .status {
+          text-transform: capitalize;
+        }
+      </style>
+    `;
+  }
+
+  function printReport() {
+    const summary = calculateOverview();
+    const reportTitle = REPORT_TITLES[state.activeReport] || "Report";
+
+    const rows = getPrintRows();
+
+    const printWindow = window.open("", "_blank", "width=1100,height=800");
+
+    if (!printWindow) {
+      showToast("Please allow pop-ups to print reports.", "warning");
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <title>${escape(reportTitle)} - ${escape(getClinicName())}</title>
+          ${getPrintStyles()}
+        </head>
+        <body>
+          <header class="print-header">
+            <div>
+              <h1>${escape(getClinicName())}</h1>
+              <p>${escape(reportTitle)}</p>
+            </div>
+
+            <div class="print-meta">
+              <strong>${escape(getRangeLabel())}</strong>
+              <span>Generated ${escape(formatDate(new Date(), {
+                hour: "2-digit",
+                minute: "2-digit"
+              }))}</span>
+            </div>
+          </header>
+
+          <div class="print-metrics">
+            <div class="print-metric">
+              <strong>${formatNumber(summary.patients.length)}</strong>
+              <span>Patients</span>
+            </div>
+
+            <div class="print-metric">
+              <strong>${formatNumber(summary.encounters.length)}</strong>
+              <span>Encounters</span>
+            </div>
+
+            <div class="print-metric">
+              <strong>${formatNumber(summary.labOrders.length)}</strong>
+              <span>Laboratory Orders</span>
+            </div>
+
+            <div class="print-metric">
+              <strong>${formatCurrency(summary.totalCollected)}</strong>
+              <span>Collected</span>
+            </div>
+          </div>
+
+          <section class="print-section">
+            <h2>${escape(reportTitle)}</h2>
+            ${rows}
+          </section>
+
+          <footer class="print-footer">
+            <span>${escape(getClinicName())}</span>
+            <span>AURA Clinic Management System</span>
+          </footer>
+
+          <script>
+            window.onload = function () {
+              window.print();
+            };
+          <\/script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  }
+
+  function getPrintRows() {
+    const summary = calculateOverview();
+
+    if (state.activeReport === "patients") {
+      const patients = filterByRange(state.data.patients);
 
       return `
-        <div class="report-list-row">
-          <div class="report-list-row__content">
-            <span class="report-list-row__label">
-              ${escapeHtml(department)}
-            </span>
-
-            <div class="report-progress">
-              <span style="width:${percentage}%"></span>
-            </div>
-          </div>
-
-          <strong>${formatNumber(count)}</strong>
-        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>UHID</th>
+              <th>Gender</th>
+              <th>Phone</th>
+              <th>Registered</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${patients
+              .map(
+                (patient) => `
+                  <tr>
+                    <td>${escape(getPatientName(patient))}</td>
+                    <td>${escape(patient.uhid || patient.patientId || "—")}</td>
+                    <td>${escape(patient.gender || "—")}</td>
+                    <td>${escape(patient.phone || "—")}</td>
+                    <td>${escape(formatDate(getRecordDate(patient)))}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
       `;
-    }).join("");
-  }
-
-  function renderStatusRows(statuses) {
-    const entries = Object.entries(statuses || {})
-      .sort((a, b) => b[1] - a[1]);
-
-    if (!entries.length) {
-      return `<div class="empty-state-inline">No laboratory data available.</div>`;
     }
 
-    return entries.map(([status, count]) => `
-      <div class="report-list-row">
-        <span class="status-badge status-neutral">
-          ${escapeHtml(status.replace(/[-_]/g, " "))}
-        </span>
+    if (state.activeReport === "clinical") {
+      const consultations = filterByRange(state.data.consultations);
 
-        <strong>${formatNumber(count)}</strong>
-      </div>
-    `).join("");
-  }
-
-  function renderPaymentTable(paymentByMethod) {
-    const entries = Object.entries(paymentByMethod || {})
-      .sort((a, b) => b[1] - a[1]);
-
-    if (!entries.length) {
-      return `<div class="empty-state-inline">No payment data available.</div>`;
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Patient</th>
+              <th>Doctor</th>
+              <th>Status</th>
+              <th>Diagnosis</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${consultations
+              .map(
+                (consultation) => `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(consultation)))}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        consultation.patientId ||
+                          consultation.patient_id ||
+                          consultation.uhid
+                      )
+                    )}</td>
+                    <td>${escape(
+                      getStaffLabel(
+                        consultation.doctorId ||
+                          consultation.doctor_id ||
+                          consultation.staffId
+                      )
+                    )}</td>
+                    <td class="status">${escape(
+                      consultation.status || "Recorded"
+                    )}</td>
+                    <td>${escape(
+                      consultation.diagnosis ||
+                        consultation.primaryDiagnosis ||
+                        consultation.assessment ||
+                        "—"
+                    )}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
     }
 
-    const total = entries.reduce((sum, [, value]) => sum + value, 0);
+    if (state.activeReport === "laboratory") {
+      const orders = filterByRange(state.data.labOrders);
+
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Patient</th>
+              <th>Test</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orders
+              .map(
+                (order) => `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(order)))}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        order.patientId ||
+                          order.patient_id ||
+                          order.uhid
+                      )
+                    )}</td>
+                    <td>${escape(
+                      order.testName ||
+                        order.serviceName ||
+                        order.test ||
+                        order.panelName ||
+                        "Unnamed test"
+                    )}</td>
+                    <td class="status">${escape(order.status || "Unknown")}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    if (state.activeReport === "financial") {
+      const invoices = filterByRange(state.data.invoices);
+      const payments = filterByRange(state.data.payments);
+
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Reference</th>
+              <th>Patient</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${[...invoices, ...payments]
+              .sort(
+                (a, b) =>
+                  new Date(getRecordDate(b) || 0) -
+                  new Date(getRecordDate(a) || 0)
+              )
+              .map((record) => {
+                const payment =
+                  record.paymentMethod ||
+                  record.method ||
+                  record.receivedAmount !== undefined ||
+                  record.invoiceId;
+
+                const amount = payment
+                  ? getNumber(record, [
+                      "amount",
+                      "paidAmount",
+                      "receivedAmount"
+                    ])
+                  : getNumber(record, ["total", "grandTotal", "amount"]);
+
+                return `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(record)))}</td>
+                    <td>${escape(
+                      record.invoiceNumber ||
+                        record.invoiceNo ||
+                        record.reference ||
+                        record.id ||
+                        "—"
+                    )}</td>
+                    <td>${escape(
+                      getPatientLabel(
+                        record.patientId ||
+                          record.patient_id ||
+                          record.uhid
+                      )
+                    )}</td>
+                    <td>${payment ? "Payment" : "Invoice"}</td>
+                    <td>${escape(formatCurrency(amount))}</td>
+                    <td class="status">${escape(record.status || "Recorded")}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    if (state.activeReport === "staff") {
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Staff ID</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Department</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.data.staff
+              .map(
+                (member) => `
+                  <tr>
+                    <td>${escape(member.staffId || member.id || "—")}</td>
+                    <td>${escape(getStaffName(member))}</td>
+                    <td>${escape(member.role || member.designation || "—")}</td>
+                    <td>${escape(member.department || "—")}</td>
+                    <td class="status">${escape(member.status || "active")}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    if (state.activeReport === "audit") {
+      const logs = filterByRange(state.data.auditLogs);
+
+      return `
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Actor</th>
+              <th>Action</th>
+              <th>Module</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs
+              .map(
+                (log) => `
+                  <tr>
+                    <td>${escape(formatDate(getRecordDate(log)))}</td>
+                    <td>${escape(
+                      log.actorName ||
+                        log.userName ||
+                        log.staffName ||
+                        getStaffLabel(log.actorId || log.userId) ||
+                        "System"
+                    )}</td>
+                    <td>${escape(
+                      log.action || log.event || log.type || "Unknown"
+                    )}</td>
+                    <td>${escape(log.module || log.source || "—")}</td>
+                    <td>${escape(
+                      log.description ||
+                        log.details ||
+                        log.message ||
+                        ""
+                    )}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    }
 
     return `
-      <table class="data-table">
+      <table>
         <thead>
           <tr>
-            <th>Payment Method</th>
-            <th>Amount</th>
-            <th>Share</th>
+            <th>Metric</th>
+            <th>Value</th>
           </tr>
         </thead>
-
         <tbody>
-          ${entries.map(([method, amount]) => {
-            const share = total > 0
-              ? Math.round((amount / total) * 100)
-              : 0;
-
-            return `
-              <tr>
-                <td>${escapeHtml(method)}</td>
-                <td>${formatCurrency(amount)}</td>
-                <td>${share}%</td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-
-        <tfoot>
           <tr>
-            <th>Total</th>
-            <th>${formatCurrency(total)}</th>
-            <th>100%</th>
+            <td>New Patients</td>
+            <td>${formatNumber(summary.patients.length)}</td>
           </tr>
-        </tfoot>
+          <tr>
+            <td>Encounters</td>
+            <td>${formatNumber(summary.encounters.length)}</td>
+          </tr>
+          <tr>
+            <td>Consultations</td>
+            <td>${formatNumber(summary.consultations.length)}</td>
+          </tr>
+          <tr>
+            <td>Laboratory Orders</td>
+            <td>${formatNumber(summary.labOrders.length)}</td>
+          </tr>
+          <tr>
+            <td>Total Invoiced</td>
+            <td>${formatCurrency(summary.totalInvoiced)}</td>
+          </tr>
+          <tr>
+            <td>Total Collected</td>
+            <td>${formatCurrency(summary.totalCollected)}</td>
+          </tr>
+          <tr>
+            <td>Outstanding</td>
+            <td>${formatCurrency(summary.totalOutstanding)}</td>
+          </tr>
+        </tbody>
       </table>
     `;
   }
 
-  function renderPatientsReport(data) {
-    const totals = data.totals;
-    const genderEntries = Object.entries(data.genderBreakdown || {});
-
-    return `
-      <section class="metrics-grid metrics-grid--four">
-        ${renderStatCard(
-          "person_add",
-          "New Registrations",
-          formatNumber(totals.patientsRegistered)
-        )}
-
-        ${renderStatCard(
-          "groups",
-          "Unique Patients",
-          formatNumber(totals.uniquePatients)
-        )}
-
-        ${renderStatCard(
-          "emergency",
-          "Male Patients",
-          formatNumber(data.genderBreakdown.male || 0)
-        )}
-
-        ${renderStatCard(
-          "female",
-          "Female Patients",
-          formatNumber(data.genderBreakdown.female || 0)
-        )}
-      </section>
-
-      <section class="reports-grid reports-grid--two">
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Gender Distribution</h2>
-              <p class="card__subtitle">Patient registrations by recorded gender.</p>
-            </div>
-          </div>
-
-          <div class="report-list">
-            ${
-              genderEntries.length
-                ? genderEntries.map(([gender, count]) => `
-                    <div class="report-list-row">
-                      <span>${escapeHtml(gender)}</span>
-                      <strong>${formatNumber(count)}</strong>
-                    </div>
-                  `).join("")
-                : `<div class="empty-state-inline">No patient demographics available.</div>`
-            }
-          </div>
-        </article>
-
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Registration Overview</h2>
-              <p class="card__subtitle">Patient registration activity.</p>
-            </div>
-          </div>
-
-          <div class="report-summary-list">
-            <div class="report-summary-item">
-              <span>Total Registrations</span>
-              <strong>${formatNumber(totals.patientsRegistered)}</strong>
-            </div>
-
-            <div class="report-summary-item">
-              <span>Unique Patients</span>
-              <strong>${formatNumber(totals.uniquePatients)}</strong>
-            </div>
-
-            <div class="report-summary-item">
-              <span>Repeat Visit Records</span>
-              <strong>
-                ${formatNumber(Math.max(0, totals.patientsRegistered - totals.uniquePatients))}
-              </strong>
-            </div>
-          </div>
-        </article>
-      </section>
-    `;
-  }
-
-  function renderClinicalReport(data) {
-    const totals = data.totals;
-
-    return `
-      <section class="metrics-grid metrics-grid--four">
-        ${renderStatCard(
-          "format_list_numbered",
-          "Queue Entries",
-          formatNumber(totals.queueEntries)
-        )}
-
-        ${renderStatCard(
-          "task_alt",
-          "Completed Queues",
-          formatNumber(totals.completedQueues)
-        )}
-
-        ${renderStatCard(
-          "stethoscope",
-          "Consultations",
-          formatNumber(totals.consultations)
-        )}
-
-        ${renderStatCard(
-          "vital_signs",
-          "Vitals Recorded",
-          formatNumber(totals.vitalsRecorded)
-        )}
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Clinical Activity by Department</h2>
-            <p class="card__subtitle">Queue distribution for the selected period.</p>
-          </div>
-        </div>
-
-        <div class="report-list">
-          ${renderDepartmentRows(data.queueByDepartment)}
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Clinical Records Summary</h2>
-            <p class="card__subtitle">Consultation and encounter activity.</p>
-          </div>
-        </div>
-
-        <div class="report-summary-grid">
-          <div class="report-summary-item">
-            <span>Encounters</span>
-            <strong>${formatNumber(totals.encounters)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Consultations</span>
-            <strong>${formatNumber(totals.consultations)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Completed Consultations</span>
-            <strong>${formatNumber(totals.completedConsultations)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Vitals Records</span>
-            <strong>${formatNumber(totals.vitalsRecorded)}</strong>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderLaboratoryReport(data) {
-    const totals = data.totals;
-
-    return `
-      <section class="metrics-grid metrics-grid--four">
-        ${renderStatCard(
-          "science",
-          "Lab Orders",
-          formatNumber(totals.labOrders)
-        )}
-
-        ${renderStatCard(
-          "task_alt",
-          "Completed Orders",
-          formatNumber(totals.completedLabOrders)
-        )}
-
-        ${renderStatCard(
-          "description",
-          "Lab Results",
-          formatNumber(totals.labResults)
-        )}
-
-        ${renderStatCard(
-          "pending_actions",
-          "Pending Orders",
-          formatNumber(
-            Math.max(0, totals.labOrders - totals.completedLabOrders)
-          )
-        )}
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Laboratory Status Distribution</h2>
-            <p class="card__subtitle">Orders grouped by workflow status.</p>
-          </div>
-        </div>
-
-        <div class="report-list">
-          ${renderStatusRows(data.labByStatus)}
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Diagnostic Performance</h2>
-            <p class="card__subtitle">Laboratory workflow completion.</p>
-          </div>
-        </div>
-
-        ${renderProgressBar(
-          "Order Completion",
-          totals.completedLabOrders,
-          totals.labOrders
-        )}
-
-        ${renderProgressBar(
-          "Result Availability",
-          totals.labResults,
-          totals.labOrders
-        )}
-      </section>
-    `;
-  }
-
-  function renderBillingReport(data) {
-    const totals = data.totals;
-
-    return `
-      <section class="metrics-grid metrics-grid--four">
-        ${renderStatCard(
-          "receipt_long",
-          "Invoices",
-          formatNumber(totals.invoices)
-        )}
-
-        ${renderStatCard(
-          "account_balance",
-          "Total Billed",
-          formatCurrency(totals.totalBilled)
-        )}
-
-        ${renderStatCard(
-          "payments",
-          "Collected",
-          formatCurrency(totals.totalPaid)
-        )}
-
-        ${renderStatCard(
-          "pending",
-          "Outstanding",
-          formatCurrency(totals.outstanding)
-        )}
-      </section>
-
-      <section class="reports-grid reports-grid--two">
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Collection Performance</h2>
-              <p class="card__subtitle">Revenue billed compared with revenue collected.</p>
-            </div>
-          </div>
-
-          ${renderProgressBar(
-            "Collection Rate",
-            totals.totalPaid,
-            totals.totalBilled
-          )}
-
-          <div class="report-highlight">
-            <span class="material-symbols-rounded">payments</span>
-            <div>
-              <strong>${formatCurrency(totals.totalPaid)}</strong>
-              <p>Collected during the selected period.</p>
-            </div>
-          </div>
-        </article>
-
-        <article class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Payment Distribution</h2>
-              <p class="card__subtitle">Revenue grouped by payment method.</p>
-            </div>
-          </div>
-
-          <div class="report-list">
-            ${renderPaymentRows(data.paymentByMethod)}
-          </div>
-        </article>
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Billing Summary</h2>
-            <p class="card__subtitle">Invoice and payment reconciliation overview.</p>
-          </div>
-        </div>
-
-        <div class="report-summary-grid">
-          <div class="report-summary-item">
-            <span>Invoices Issued</span>
-            <strong>${formatNumber(totals.invoices)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Total Billed</span>
-            <strong>${formatCurrency(totals.totalBilled)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Total Paid</span>
-            <strong>${formatCurrency(totals.totalPaid)}</strong>
-          </div>
-
-          <div class="report-summary-item">
-            <span>Outstanding</span>
-            <strong>${formatCurrency(totals.outstanding)}</strong>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderPaymentRows(paymentByMethod) {
-    const entries = Object.entries(paymentByMethod || {})
-      .sort((a, b) => b[1] - a[1]);
-
-    if (!entries.length) {
-      return `<div class="empty-state-inline">No payment data available.</div>`;
-    }
-
-    return entries.map(([method, amount]) => `
-      <div class="report-list-row">
-        <span>${escapeHtml(method)}</span>
-        <strong>${formatCurrency(amount)}</strong>
-      </div>
-    `).join("");
-  }
-
-  function renderStaffReport(data) {
-    const activityEntries = Object.entries(data.staffActivity || {})
-      .sort((a, b) => b[1] - a[1]);
-
-    return `
-      <section class="metrics-grid metrics-grid--four">
-        ${renderStatCard(
-          "badge",
-          "Total Staff",
-          formatNumber(state.staff.length)
-        )}
-
-        ${renderStatCard(
-          "groups",
-          "Active Staff",
-          formatNumber(
-            state.staff.filter((staff) => staff.status === "active").length
-          )
-        )}
-
-        ${renderStatCard(
-          "history",
-          "Audit Events",
-          formatNumber(data.totals.auditEvents)
-        )}
-
-        ${renderStatCard(
-          "medical_services",
-          "Staff Activities",
-          formatNumber(activityEntries.length)
-        )}
-      </section>
-
-      <section class="card">
-        <div class="card__header">
-          <div>
-            <h2 class="card__title">Staff Activity</h2>
-            <p class="card__subtitle">Recorded actions during the selected period.</p>
-          </div>
-        </div>
-
-        <div class="report-table-wrap">
-          ${
-            activityEntries.length
-              ? `
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>Staff Member</th>
-                      <th>Activity Count</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${activityEntries.map(([staffId, count]) => `
-                      <tr>
-                        <td>${escapeHtml(getStaffName(staffId, staffId))}</td>
-                        <td>${formatNumber(count)}</td>
-                      </tr>
-                    `).join("")}
-                  </tbody>
-                </table>
-              `
-              : `<div class="empty-state-inline">No staff activity recorded.</div>`
-          }
-        </div>
-      </section>
-    `;
-  }
-
-  function renderRecentActivity(data) {
-    const records = [
-      ...data.records.auditLogs.map((record) => ({
-        type: "Audit",
-        icon: "history",
-        date: getRecordDate(record),
-        label: record.action || record.event || "System activity",
-        detail: record.description || record.message || ""
-      })),
-      ...data.records.payments.map((record) => ({
-        type: "Payment",
-        icon: "payments",
-        date: getRecordDate(record),
-        label: "Payment recorded",
-        detail: formatCurrency(
-          record.amount ??
-          record.paidAmount ??
-          record.total ??
-          0
-        )
-      })),
-      ...data.records.labResults.map((record) => ({
-        type: "Laboratory",
-        icon: "science",
-        date: getRecordDate(record),
-        label: "Laboratory result updated",
-        detail: record.status || "Result available"
-      })),
-      ...data.records.consultations.map((record) => ({
-        type: "Clinical",
-        icon: "stethoscope",
-        date: getRecordDate(record),
-        label: "Consultation recorded",
-        detail: record.diagnosis || record.status || ""
-      }))
-    ]
-      .filter((item) => item.date)
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 10);
-
-    if (!records.length) {
-      return `
-        <div class="empty-state-inline">
-          No recent activity available.
-        </div>
-      `;
-    }
-
-    return `
-      <div class="activity-list">
-        ${records.map((item) => `
-          <div class="activity-item">
-            <div class="activity-item__icon">
-              <span class="material-symbols-rounded">
-                ${escapeHtml(item.icon)}
-              </span>
-            </div>
-
-            <div class="activity-item__content">
-              <strong>${escapeHtml(item.label)}</strong>
-              <span>${escapeHtml(item.detail || item.type)}</span>
-            </div>
-
-            <time>${escapeHtml(formatDateTime(item.date))}</time>
-          </div>
-        `).join("")}
-      </div>
-    `;
-  }
-
-  function renderReportBody(data) {
-    if (!data.records.patients.length &&
-        !data.records.queues.length &&
-        !data.records.encounters.length &&
-        !data.records.invoices.length &&
-        !data.records.payments.length &&
-        !data.records.labOrders.length) {
-      return renderEmptyState();
-    }
-
-    switch (state.reportType) {
-      case "patients":
-        return renderPatientsReport(data);
-
-      case "clinical":
-        return renderClinicalReport(data);
-
-      case "laboratory":
-        return renderLaboratoryReport(data);
-
-      case "billing":
-        return renderBillingReport(data);
-
-      case "staff":
-        return renderStaffReport(data);
-
-      case "overview":
-      default:
-        return renderOverview(data);
-    }
-  }
-
-  function render() {
-    const target =
-      document.querySelector('[data-route-view="reports"]') ||
-      document.querySelector("#app-content") ||
-      document.querySelector("#app");
-
-    if (!target) return;
-
-    if (state.isLoading) {
-      target.innerHTML = renderLoading();
-      return;
-    }
-
-    const data = getReportData();
-
-    target.innerHTML = `
-      <div class="page-shell reports-page">
-        ${renderHeader()}
-        ${renderFilters()}
-
-        <div class="reports-page__body">
-          ${renderReportBody(data)}
-        </div>
-
-        <section class="card">
-          <div class="card__header">
-            <div>
-              <h2 class="card__title">Recent Activity</h2>
-              <p class="card__subtitle">
-                Latest recorded system and operational events.
-              </p>
-            </div>
-          </div>
-
-          ${renderRecentActivity(data)}
-        </section>
-      </div>
-    `;
-
-    bindEvents(target);
-  }
-
-  /* =========================================================
-     FILTERS AND EVENTS
-     ========================================================= */
-
-  function initializeDefaultDates() {
-    const today = todayISO();
-
-    if (!state.fromDate) {
-      state.fromDate = today;
-    }
-
-    if (!state.toDate) {
-      state.toDate = today;
-    }
-  }
-
-  function applyFilters() {
-    const fromInput = document.querySelector("#reports-from-date");
-    const toInput = document.querySelector("#reports-to-date");
-    const typeInput = document.querySelector("#reports-report-type");
-
-    if (fromInput) {
-      state.fromDate = fromInput.value || todayISO();
-    }
-
-    if (toInput) {
-      state.toDate = toInput.value || state.fromDate;
-    }
-
-    if (typeInput) {
-      state.reportType = typeInput.value || "overview";
-    }
-
-    if (state.fromDate > state.toDate) {
-      const temporary = state.fromDate;
-      state.fromDate = state.toDate;
-      state.toDate = temporary;
-    }
-
-    render();
-    notifySubscribers();
-  }
-
-  function setToday() {
-    const today = todayISO();
-
-    state.fromDate = today;
-    state.toDate = today;
-
-    render();
-    notifySubscribers();
-  }
-
-  function bindEvents(container) {
-    container.querySelectorAll("[data-report-action]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const action = button.dataset.reportAction;
-
-        if (action === "apply") {
-          applyFilters();
-        }
-
-        if (action === "today") {
-          setToday();
-        }
-
-        if (action === "export") {
-          exportCSV();
-        }
-
-        if (action === "print") {
-          printReport();
-        }
-      });
-    });
-
-    const fromInput = container.querySelector("#reports-from-date");
-    const toInput = container.querySelector("#reports-to-date");
-    const typeInput = container.querySelector("#reports-report-type");
-
-    if (fromInput) {
-      fromInput.addEventListener("change", () => {
-        state.fromDate = fromInput.value;
-      });
-    }
-
-    if (toInput) {
-      toInput.addEventListener("change", () => {
-        state.toDate = toInput.value;
-      });
-    }
-
-    if (typeInput) {
-      typeInput.addEventListener("change", () => {
-        state.reportType = typeInput.value;
-      });
-    }
-  }
-
-  /* =========================================================
-     CSV EXPORT
-     ========================================================= */
-
-  function csvEscape(value) {
-    const stringValue = String(value ?? "");
-
-    if (
-      stringValue.includes(",") ||
-      stringValue.includes('"') ||
-      stringValue.includes("\n")
-    ) {
-      return `"${stringValue.replace(/"/g, '""')}"`;
-    }
-
-    return stringValue;
-  }
-
-  function createCSVRows(data) {
-    const rows = [];
-
-    rows.push([
-      "AURA Clinic Report",
-      ""
-    ]);
-
-    rows.push([
-      "Report Type",
-      state.reportType
-    ]);
-
-    rows.push([
-      "From Date",
-      state.fromDate
-    ]);
-
-    rows.push([
-      "To Date",
-      state.toDate
-    ]);
-
-    rows.push([]);
-
-    rows.push([
-      "Metric",
-      "Value"
-    ]);
-
-    Object.entries(data.totals).forEach(([key, value]) => {
-      rows.push([
-        key,
-        typeof value === "number" ? value : String(value)
-      ]);
-    });
-
-    rows.push([]);
-
-    rows.push([
-      "Payment Method",
-      "Amount"
-    ]);
-
-    Object.entries(data.paymentByMethod).forEach(([method, amount]) => {
-      rows.push([
-        method,
-        amount
-      ]);
-    });
-
-    rows.push([]);
-
-    rows.push([
-      "Queue Department",
-      "Count"
-    ]);
-
-    Object.entries(data.queueByDepartment).forEach(([department, count]) => {
-      rows.push([
-        department,
-        count
-      ]);
-    });
-
-    rows.push([]);
-
-    rows.push([
-      "Laboratory Status",
-      "Count"
-    ]);
-
-    Object.entries(data.labByStatus).forEach(([status, count]) => {
-      rows.push([
-        status,
-        count
-      ]);
-    });
-
-    return rows;
-  }
-
-  function exportCSV() {
-    const data = getReportData();
-    const rows = createCSVRows(data);
-
-    const csvContent = rows
-      .map((row) => row.map(csvEscape).join(","))
-      .join("\n");
-
-    const filename = [
-      "aura-clinic-report",
-      state.reportType,
-      state.fromDate,
-      state.toDate
-    ].join("-") + ".csv";
-
-    if (UTILS && typeof UTILS.downloadFile === "function") {
-      UTILS.downloadFile(filename, csvContent, "text/csv;charset=utf-8");
-    } else {
-      const blob = new Blob([csvContent], {
-        type: "text/csv;charset=utf-8"
-      });
-
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-
-      anchor.href = url;
-      anchor.download = filename;
-      anchor.click();
-
-      URL.revokeObjectURL(url);
-    }
-
-    notify(
-      "success",
-      "Report exported",
-      "The CSV report has been downloaded."
-    );
-
-    emit("reports:exported", {
-      reportType: state.reportType,
-      fromDate: state.fromDate,
-      toDate: state.toDate,
-      filename
-    });
-  }
-
-  /* =========================================================
-     PRINTING
-     ========================================================= */
-
-  function printReport() {
-    const data = getReportData();
-
-    const printableWindow = window.open(
-      "",
-      "_blank",
-      "width=1100,height=800"
-    );
-
-    if (!printableWindow) {
-      notify(
-        "warning",
-        "Popup blocked",
-        "Allow popups to print the report."
-      );
-      return;
-    }
-
-    const clinicName =
-      CONFIG.clinic?.name ||
-      CONFIG.app?.name ||
-      "AURA Clinic";
-
-    const reportTitle = state.reportType
-      .charAt(0)
-      .toUpperCase() + state.reportType.slice(1);
-
-    printableWindow.document.write(`
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <title>${escapeHtml(clinicName)} — ${escapeHtml(reportTitle)} Report</title>
-
-        <style>
-          * {
-            box-sizing: border-box;
-          }
-
-          body {
-            margin: 0;
-            padding: 32px;
-            color: #172033;
-            font-family: Arial, sans-serif;
-            background: #ffffff;
-          }
-
-          h1,
-          h2,
-          h3,
-          p {
-            margin-top: 0;
-          }
-
-          .print-header {
-            border-bottom: 2px solid #172033;
-            padding-bottom: 18px;
-            margin-bottom: 24px;
-          }
-
-          .print-header h1 {
-            margin-bottom: 8px;
-            font-size: 26px;
-          }
-
-          .print-header p {
-            margin-bottom: 4px;
-            color: #5f6b7a;
-          }
-
-          .print-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 14px;
-            margin-bottom: 28px;
-          }
-
-          .metric {
-            border: 1px solid #dce2ea;
-            border-radius: 10px;
-            padding: 16px;
-          }
-
-          .metric span {
-            display: block;
-            color: #657184;
-            font-size: 12px;
-            margin-bottom: 8px;
-          }
-
-          .metric strong {
-            font-size: 20px;
-          }
-
-          .section {
-            margin-top: 26px;
-          }
-
-          .section h2 {
-            font-size: 17px;
-            margin-bottom: 12px;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 18px;
-          }
-
-          th,
-          td {
-            border: 1px solid #dce2ea;
-            padding: 9px 10px;
-            text-align: left;
-            font-size: 12px;
-          }
-
-          th {
-            background: #f4f6f8;
-          }
-
-          .footer {
-            margin-top: 32px;
-            padding-top: 14px;
-            border-top: 1px solid #dce2ea;
-            color: #657184;
-            font-size: 11px;
-          }
-
-          @media print {
-            body {
-              padding: 16px;
-            }
-
-            .print-grid {
-              grid-template-columns: repeat(4, 1fr);
-            }
-          }
-        </style>
-      </head>
-
-      <body>
-        <header class="print-header">
-          <h1>${escapeHtml(clinicName)}</h1>
-          <p>${escapeHtml(reportTitle)} Report</p>
-          <p>
-            Period: ${escapeHtml(formatDate(state.fromDate))}
-            to
-            ${escapeHtml(formatDate(state.toDate))}
-          </p>
-          <p>Generated: ${escapeHtml(formatDateTime(new Date()))}</p>
-        </header>
-
-        <section class="print-grid">
-          <div class="metric">
-            <span>Patients Registered</span>
-            <strong>${formatNumber(data.totals.patientsRegistered)}</strong>
-          </div>
-
-          <div class="metric">
-            <span>Clinical Encounters</span>
-            <strong>${formatNumber(data.totals.encounters)}</strong>
-          </div>
-
-          <div class="metric">
-            <span>Laboratory Orders</span>
-            <strong>${formatNumber(data.totals.labOrders)}</strong>
-          </div>
-
-          <div class="metric">
-            <span>Revenue Collected</span>
-            <strong>${escapeHtml(formatCurrency(data.totals.totalPaid))}</strong>
-          </div>
-        </section>
-
-        <section class="section">
-          <h2>Operational Summary</h2>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${Object.entries(data.totals).map(([key, value]) => `
-                <tr>
-                  <td>${escapeHtml(key)}</td>
-                  <td>${escapeHtml(
-                    typeof value === "number"
-                      ? formatNumber(value)
-                      : value
-                  )}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </section>
-
-        <section class="section">
-          <h2>Payment Methods</h2>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Payment Method</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${
-                Object.entries(data.paymentByMethod).length
-                  ? Object.entries(data.paymentByMethod).map(([method, amount]) => `
-                      <tr>
-                        <td>${escapeHtml(method)}</td>
-                        <td>${escapeHtml(formatCurrency(amount))}</td>
-                      </tr>
-                    `).join("")
-                  : `
-                    <tr>
-                      <td colspan="2">No payment records available.</td>
-                    </tr>
-                  `
-              }
-            </tbody>
-          </table>
-        </section>
-
-        <section class="section">
-          <h2>Queue by Department</h2>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Department</th>
-                <th>Queue Entries</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${
-                Object.entries(data.queueByDepartment).length
-                  ? Object.entries(data.queueByDepartment).map(([department, count]) => `
-                      <tr>
-                        <td>${escapeHtml(department)}</td>
-                        <td>${formatNumber(count)}</td>
-                      </tr>
-                    `).join("")
-                  : `
-                    <tr>
-                      <td colspan="2">No queue records available.</td>
-                    </tr>
-                  `
-              }
-            </tbody>
-          </table>
-        </section>
-
-        <footer class="footer">
-          Generated by AURA Clinic Management System.
-        </footer>
-
-        <script>
-          window.addEventListener("load", function () {
-            window.print();
-          });
-        <\/script>
-      </body>
-      </html>
-    `);
-
-    printableWindow.document.close();
-
-    emit("reports:printed", {
-      reportType: state.reportType,
-      fromDate: state.fromDate,
-      toDate: state.toDate
-    });
-  }
-
-  /* =========================================================
-     REFRESH AND EVENT SUBSCRIPTIONS
-     ========================================================= */
-
-  async function refresh() {
-    await loadData();
-    render();
-    return getState();
-  }
-
-  function registerEventListeners() {
-    if (!EVENTS || typeof EVENTS.on !== "function") return;
-
+  function subscribeToEvents() {
     const eventNames = [
       "patient:created",
       "patient:updated",
       "patient:deleted",
-
       "queue:created",
       "queue:updated",
-      "queue:called",
       "queue:completed",
-
-      "vitals:recorded",
-      "consultation:created",
       "consultation:completed",
-
       "lab:order-created",
-      "lab:result-created",
       "lab:result-verified",
-      "lab:order-status-updated",
-
       "invoice:created",
+      "invoice:updated",
       "payment:created",
-
       "staff:created",
       "staff:updated",
-      "staff:deleted",
-
-      "storage:change"
+      "storage:changed"
     ];
 
     eventNames.forEach((eventName) => {
-      EVENTS.on(eventName, () => {
-        refresh();
-      });
+      if (EVENTS && typeof EVENTS.on === "function") {
+        EVENTS.on(eventName, () => {
+          if (document.querySelector('[data-route-view="reports"]')) {
+            loadData().then(updateContent);
+          }
+        });
+      }
+    });
+
+    document.addEventListener("aura:route-changed", (event) => {
+      const route = event.detail?.route || event.detail;
+
+      if (route === "reports") {
+        initialize();
+      }
     });
   }
 
-  /* =========================================================
-     MODULE INITIALIZATION
-     ========================================================= */
-
   async function initialize() {
     if (state.initialized) {
-      return getState();
+      await loadData();
+      renderShell();
+      return state;
     }
 
     state.initialized = true;
 
-    initializeDefaultDates();
-    registerEventListeners();
-
     await loadData();
+    renderShell();
+    subscribeToEvents();
 
-    return getState();
-  }
-
-  function registerModule() {
-    if (
-      window.AURA_APP &&
-      typeof window.AURA_APP.registerModule === "function"
-    ) {
-      window.AURA_APP.registerModule(MODULE_NAME, {
-        initialize,
-        render,
-        refresh,
-        getState,
-        subscribe,
-        exportCSV,
-        printReport,
-        applyFilters,
-        setToday
+    if (EVENTS && typeof EVENTS.emit === "function") {
+      EVENTS.emit("reports:initialized", {
+        module: MODULE_NAME
       });
     }
+
+    return state;
   }
 
-  /* =========================================================
-     PUBLIC API
-     ========================================================= */
+  function getState() {
+    return {
+      ...state,
+      data: {
+        ...state.data
+      }
+    };
+  }
 
-  window.AURA_REPORTS = {
+  function setRange(range, from = "", to = "") {
+    state.range = range || "today";
+    state.customFrom = from;
+    state.customTo = to;
+
+    updateContent();
+  }
+
+  function setActiveReport(reportId) {
+    if (!REPORTS.some((report) => report.id === reportId)) {
+      return false;
+    }
+
+    state.activeReport = reportId;
+
+    document
+      .querySelectorAll("[data-report-id]")
+      .forEach((button) => {
+        const active = button.dataset.reportId === reportId;
+
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-current", active ? "page" : "false");
+      });
+
+    updateContent();
+
+    return true;
+  }
+
+  const API = {
     initialize,
-    render,
+    init: initialize,
     refresh,
+    render: renderShell,
+    loadData,
+    print: printReport,
     getState,
-    subscribe,
-    exportCSV,
-    printReport,
-    applyFilters,
-    setToday
+    setRange,
+    setActiveReport,
+    getDateRange,
+    calculateOverview
   };
 
+  window.AURA_REPORTS = API;
+  window.AURA_REPORTS_MODULE = API;
+
   window.AURA = window.AURA || {};
-  window.AURA.reports = window.AURA_REPORTS;
+  window.AURA.reports = API;
 
-  registerModule();
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initialize, { once: true });
-  } else {
-    initialize();
+  if (window.AURA_APP && typeof window.AURA_APP.registerModule === "function") {
+    window.AURA_APP.registerModule("reports", API);
   }
 
-})();
+  document.addEventListener("DOMContentLoaded", () => {
+    const currentRoute =
+      window.location.hash.replace(/^#\/?/, "").split("?")[0] ||
+      "dashboard";
+
+    if (currentRoute === "reports") {
+      initialize();
+    }
+  });
+})(window, document);
