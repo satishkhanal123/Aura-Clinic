@@ -40,17 +40,13 @@
 
     <title>AURA Clinic</title>
 
-    <!-- =========================
-         FAVICON
-    ========================== -->
+    <!-- FAVICON -->
     <link
         rel="icon"
         href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230B0F19'/%3E%3Cpath d='M50 18L82 82H68L61 66H39L32 82H18L50 18ZM50 39L44 54H56L50 39Z' fill='%2357C7FF'/%3E%3C/svg%3E"
     >
 
-    <!-- =========================
-         GOOGLE FONTS
-    ========================== -->
+    <!-- FONTS -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
@@ -59,32 +55,25 @@
         rel="stylesheet"
     >
 
-    <!-- =========================
-         STYLESHEETS
-    ========================== -->
-
+    <!-- CORE STYLES -->
     <link rel="stylesheet" href="frontend/css/tokens.css">
     <link rel="stylesheet" href="frontend/css/base.css">
     <link rel="stylesheet" href="frontend/css/layout.css">
     <link rel="stylesheet" href="frontend/css/components.css">
     <link rel="stylesheet" href="frontend/css/responsive.css">
 
+    <!-- WORKFLOW STYLES -->
     <link rel="stylesheet" href="frontend/css/clinical-workflow.css">
     <link rel="stylesheet" href="frontend/css/workflow-validation.css">
     <link rel="stylesheet" href="frontend/css/lab-billing.css">
     <link rel="stylesheet" href="frontend/css/workspace.css">
 
-    <!-- Optional module-specific styles -->
+    <!-- MODULE STYLES -->
     <link rel="stylesheet" href="frontend/css/reports.css">
     <link rel="stylesheet" href="frontend/css/more.css">
 
 
     <style>
-        /* =====================================================
-           AURA CLINIC — BOOTSTRAP FALLBACK
-           Keeps the application usable before JavaScript loads.
-        ====================================================== */
-
         :root {
             color-scheme: dark;
         }
@@ -98,8 +87,13 @@
         body {
             background: #0B0F19;
             color: #F4F7FB;
-            font-family: "DM Sans", system-ui, -apple-system,
-                BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family:
+                "DM Sans",
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
         }
 
         #aura-loading-screen {
@@ -146,8 +140,7 @@
             font-family: "Manrope", sans-serif;
             font-size: 28px;
             font-weight: 800;
-            box-shadow:
-                0 0 30px rgba(87, 199, 255, 0.08);
+            box-shadow: 0 0 30px rgba(87, 199, 255, 0.08);
         }
 
         .aura-loader-title {
@@ -189,14 +182,28 @@
             font-size: 14px;
             line-height: 1.6;
         }
+
+        .initial-app-state {
+            min-height: 60vh;
+            display: grid;
+            place-items: center;
+        }
+
+        .page-loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            color: rgba(244, 247, 251, 0.55);
+        }
     </style>
 </head>
 
+
 <body>
 
-    <!-- =====================================================
-         APPLICATION LOADING SCREEN
-    ====================================================== -->
+    <!-- APPLICATION LOADING SCREEN -->
+
     <div id="aura-loading-screen">
         <div class="aura-loader">
 
@@ -220,15 +227,15 @@
     </div>
 
 
-    <!-- =====================================================
-         APPLICATION ROOT
-    ====================================================== -->
+    <!-- APPLICATION ROOT -->
 
-    <div id="app" class="aura-app">
+    <div
+        id="app"
+        class="aura-app"
+        data-app-root="aura-app"
+    >
 
-        <!-- =================================================
-             SIDEBAR / DESKTOP NAVIGATION
-        ================================================== -->
+        <!-- SIDEBAR -->
 
         <aside
             id="app-sidebar"
@@ -258,7 +265,7 @@
                     data-action="close-sidebar"
                     aria-label="Close navigation"
                 >
-                    <span aria-hidden="true">×</span>
+                    ×
                 </button>
 
             </div>
@@ -460,15 +467,11 @@
         </aside>
 
 
-        <!-- =================================================
-             MAIN APPLICATION AREA
-        ================================================== -->
+        <!-- MAIN APPLICATION SHELL -->
 
         <div class="app-shell">
 
-            <!-- =============================================
-                 TOP HEADER
-            ============================================== -->
+            <!-- TOP HEADER -->
 
             <header
                 id="app-header"
@@ -487,6 +490,7 @@
                     </button>
 
                     <div class="breadcrumb-container">
+
                         <span
                             id="breadcrumb-section"
                             class="breadcrumb-section"
@@ -507,6 +511,7 @@
                         >
                             Dashboard
                         </strong>
+
                     </div>
 
                 </div>
@@ -514,11 +519,11 @@
 
                 <div class="header-right">
 
-                    <!-- Global Search -->
+                    <!-- GLOBAL SEARCH -->
 
                     <div
-                        class="global-search-container"
                         id="global-search-container"
+                        class="global-search-container"
                     >
 
                         <button
@@ -574,10 +579,14 @@
                                 id="global-search-results"
                                 class="global-search-results"
                             >
+
                                 <div class="empty-state compact">
                                     <strong>Start searching</strong>
-                                    <span>Search across your clinic workspace.</span>
+                                    <span>
+                                        Search across your clinic workspace.
+                                    </span>
                                 </div>
+
                             </div>
 
                         </div>
@@ -585,7 +594,7 @@
                     </div>
 
 
-                    <!-- Notifications -->
+                    <!-- NOTIFICATIONS -->
 
                     <button
                         type="button"
@@ -607,7 +616,7 @@
                     </button>
 
 
-                    <!-- Theme -->
+                    <!-- THEME -->
 
                     <button
                         type="button"
@@ -624,7 +633,7 @@
                     </button>
 
 
-                    <!-- User -->
+                    <!-- USER MENU -->
 
                     <button
                         type="button"
@@ -661,9 +670,7 @@
             </header>
 
 
-            <!-- =============================================
-                 MAIN CONTENT
-            ============================================== -->
+            <!-- MAIN CONTENT -->
 
             <main
                 id="app-content"
@@ -676,8 +683,6 @@
                     class="route-container"
                     aria-live="polite"
                 >
-
-                    <!-- Dashboard and module views are injected here -->
 
                     <div
                         id="initial-app-state"
@@ -701,9 +706,7 @@
             </main>
 
 
-            <!-- =============================================
-                 MOBILE BOTTOM NAVIGATION
-            ============================================== -->
+            <!-- MOBILE BOTTOM NAVIGATION -->
 
             <nav
                 id="mobile-bottom-navigation"
@@ -716,8 +719,16 @@
                     class="mobile-nav-item"
                     data-route="dashboard"
                 >
-                    <span class="mobile-nav-icon" aria-hidden="true">⌂</span>
-                    <span class="mobile-nav-label">Home</span>
+                    <span
+                        class="mobile-nav-icon"
+                        aria-hidden="true"
+                    >
+                        ⌂
+                    </span>
+
+                    <span class="mobile-nav-label">
+                        Home
+                    </span>
                 </a>
 
                 <a
@@ -725,8 +736,16 @@
                     class="mobile-nav-item"
                     data-route="patients"
                 >
-                    <span class="mobile-nav-icon" aria-hidden="true">◉</span>
-                    <span class="mobile-nav-label">Patients</span>
+                    <span
+                        class="mobile-nav-icon"
+                        aria-hidden="true"
+                    >
+                        ◉
+                    </span>
+
+                    <span class="mobile-nav-label">
+                        Patients
+                    </span>
                 </a>
 
                 <a
@@ -734,8 +753,16 @@
                     class="mobile-nav-item mobile-nav-primary"
                     data-route="registration"
                 >
-                    <span class="mobile-nav-primary-icon" aria-hidden="true">＋</span>
-                    <span class="mobile-nav-label">Register</span>
+                    <span
+                        class="mobile-nav-primary-icon"
+                        aria-hidden="true"
+                    >
+                        ＋
+                    </span>
+
+                    <span class="mobile-nav-label">
+                        Register
+                    </span>
                 </a>
 
                 <a
@@ -743,8 +770,16 @@
                     class="mobile-nav-item"
                     data-route="queue"
                 >
-                    <span class="mobile-nav-icon" aria-hidden="true">☷</span>
-                    <span class="mobile-nav-label">Queue</span>
+                    <span
+                        class="mobile-nav-icon"
+                        aria-hidden="true"
+                    >
+                        ☷
+                    </span>
+
+                    <span class="mobile-nav-label">
+                        Queue
+                    </span>
                 </a>
 
                 <a
@@ -752,8 +787,16 @@
                     class="mobile-nav-item"
                     data-route="more"
                 >
-                    <span class="mobile-nav-icon" aria-hidden="true">•••</span>
-                    <span class="mobile-nav-label">More</span>
+                    <span
+                        class="mobile-nav-icon"
+                        aria-hidden="true"
+                    >
+                        •••
+                    </span>
+
+                    <span class="mobile-nav-label">
+                        More
+                    </span>
                 </a>
 
             </nav>
@@ -763,9 +806,7 @@
     </div>
 
 
-    <!-- =====================================================
-         GLOBAL OVERLAYS
-    ====================================================== -->
+    <!-- GLOBAL OVERLAYS -->
 
     <div
         id="app-modal-root"
@@ -792,10 +833,7 @@
     ></div>
 
 
-    <!-- =====================================================
-         GLOBAL SCRIPTS
-         Load order is important.
-    ====================================================== -->
+    <!-- JAVASCRIPT -->
 
     <!-- Configuration and external services -->
 
@@ -803,7 +841,7 @@
     <script src="frontend/js/supabase-client.js"></script>
 
 
-    <!-- Core application services -->
+    <!-- Core services -->
 
     <script src="frontend/js/core/storage.js"></script>
     <script src="frontend/js/core/events.js"></script>
@@ -827,21 +865,21 @@
     <script src="frontend/js/modules/more.js"></script>
 
 
-    <!-- Application bootstrap — should load last -->
+    <!-- Main application bootstrap -->
 
     <script src="frontend/js/core/app.js"></script>
 
 
-    <!-- =====================================================
-         BOOTSTRAP FALLBACK SCRIPT
-    ====================================================== -->
+    <!-- LOADING SCREEN CONTROL -->
 
     <script>
         (function () {
             "use strict";
 
             function hideLoadingScreen() {
-                var loader = document.getElementById("aura-loading-screen");
+                var loader = document.getElementById(
+                    "aura-loading-screen"
+                );
 
                 if (!loader) {
                     return;
@@ -856,29 +894,21 @@
                 }, 400);
             }
 
-            function initializeFallback() {
-                hideLoadingScreen();
-
-                var initialState = document.getElementById("initial-app-state");
-
-                if (
-                    initialState &&
-                    window.AURA_APP &&
-                    typeof window.AURA_APP.initialize === "function"
-                ) {
-                    return;
-                }
-            }
 
             document.addEventListener(
                 "DOMContentLoaded",
                 function () {
-                    window.setTimeout(initializeFallback, 300);
+                    window.setTimeout(function () {
+                        if (!window.AURA_APP) {
+                            hideLoadingScreen();
+                        }
+                    }, 2500);
                 },
                 {
                     once: true
                 }
             );
+
 
             window.addEventListener(
                 "aura:app-ready",
@@ -888,6 +918,7 @@
                 }
             );
 
+
             window.addEventListener(
                 "aura:app-initialized",
                 hideLoadingScreen,
@@ -896,44 +927,32 @@
                 }
             );
 
-            window.addEventListener(
-                "error",
-                function (event) {
-                    if (
-                        event &&
-                        event.error &&
-                        window.AURA_CONFIG &&
-                        window.AURA_CONFIG.development &&
-                        window.AURA_CONFIG.development.debug
-                    ) {
-                        console.error(
-                            "[AURA Clinic] Runtime error:",
-                            event.error
-                        );
-                    }
-                }
-            );
-
         })();
     </script>
 
 
-    <!-- =====================================================
-         NO JAVASCRIPT MESSAGE
-    ====================================================== -->
+    <!-- NO JAVASCRIPT MESSAGE -->
 
     <noscript>
+
         <div class="aura-noscript">
-            <h2>JavaScript Required</h2>
+
+            <h2>
+                JavaScript Required
+            </h2>
+
             <p>
                 AURA Clinic requires JavaScript to manage patients,
                 clinical workflows, laboratory records, billing,
                 staff management, and reports.
             </p>
+
             <p>
                 Please enable JavaScript in your browser and reload the page.
             </p>
+
         </div>
+
     </noscript>
 
 </body>
