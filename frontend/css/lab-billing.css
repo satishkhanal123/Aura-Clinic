@@ -1,0 +1,1202 @@
+/* =========================================================
+   AURA CLINIC
+   Laboratory & Billing Styles
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   LABORATORY DASHBOARD
+   --------------------------------------------------------- */
+
+.lab-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.lab-dashboard__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.lab-dashboard__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.lab-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.lab-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.lab-kpi__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.lab-kpi__label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lab-kpi__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-lg);
+  color: var(--primary);
+  background: var(--color-primary-50);
+}
+
+.lab-kpi__value {
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: 950;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.lab-kpi__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------
+   LAB WORKLIST
+   --------------------------------------------------------- */
+
+.lab-worklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lab-worklist__filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.lab-worklist__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lab-worklist__table th {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lab-worklist__table td {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  vertical-align: middle;
+}
+
+.lab-worklist__patient {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 180px;
+}
+
+.lab-worklist__patient-info {
+  min-width: 0;
+}
+
+.lab-worklist__patient-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-worklist__patient-uhid {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.lab-worklist__test {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.lab-worklist__test-name {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.lab-worklist__test-code {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.lab-worklist__priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.lab-worklist__priority::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.lab-worklist__priority--routine {
+  color: var(--text-muted);
+}
+
+.lab-worklist__priority--urgent {
+  color: var(--color-warning);
+}
+
+.lab-worklist__priority--stat {
+  color: var(--color-danger);
+}
+
+/* ---------------------------------------------------------
+   SAMPLE COLLECTION
+   --------------------------------------------------------- */
+
+.sample-collection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.sample-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.sample-card__identity {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.sample-card__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-lg);
+  color: var(--color-info);
+  background: var(--color-info-bg);
+}
+
+.sample-card__content {
+  min-width: 0;
+}
+
+.sample-card__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sample-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.sample-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.sample-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  background: var(--surface-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sample-label__barcode {
+  letter-spacing: 0.12em;
+}
+
+/* ---------------------------------------------------------
+   RESULT ENTRY
+   --------------------------------------------------------- */
+
+.result-entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.result-entry__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.result-entry__patient {
+  min-width: 0;
+}
+
+.result-entry__patient-name {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 950;
+}
+
+.result-entry__patient-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.result-entry__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.result-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+
+.result-table th {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.result-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  vertical-align: middle;
+}
+
+.result-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.result-table__test {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.result-table__code {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.result-table__input {
+  min-width: 110px;
+}
+
+.result-table__range {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.result-table__flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.result-table__flag--normal {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.result-table__flag--low,
+.result-table__flag--high {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.result-table__flag--critical {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+/* ---------------------------------------------------------
+   REPORT PREVIEW
+   --------------------------------------------------------- */
+
+.report-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.report-preview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.report-preview__clinic {
+  min-width: 0;
+}
+
+.report-preview__clinic-name {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 950;
+}
+
+.report-preview__clinic-meta {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.report-preview__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+  font-weight: 950;
+  text-align: right;
+}
+
+.report-preview__subtitle {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.report-preview__patient {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-muted);
+}
+
+.report-preview__patient-item {
+  min-width: 0;
+}
+
+.report-preview__patient-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.report-preview__patient-value {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-preview__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-preview__table th,
+.report-preview__table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.report-preview__table th {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.report-preview__table td {
+  color: var(--text-secondary);
+}
+
+.report-preview__footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}
+
+.report-preview__signature {
+  min-width: 160px;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------
+   BILLING DASHBOARD
+   --------------------------------------------------------- */
+
+.billing-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.billing-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.billing-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.billing-kpi__label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.billing-kpi__value {
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: 950;
+  letter-spacing: -0.05em;
+}
+
+.billing-kpi__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------
+   INVOICE
+   --------------------------------------------------------- */
+
+.invoice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.invoice__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.invoice__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.invoice__logo {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-xl);
+  color: #ffffff;
+  background: var(--primary);
+  font-size: var(--text-lg);
+  font-weight: 950;
+}
+
+.invoice__clinic-name {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 950;
+}
+
+.invoice__clinic-details {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.invoice__number {
+  text-align: right;
+}
+
+.invoice__number-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.invoice__number-value {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 900;
+}
+
+.invoice__patient {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  background: var(--surface-muted);
+}
+
+.invoice__patient-field {
+  min-width: 0;
+}
+
+.invoice__patient-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.invoice__patient-value {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice__items {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice__items th,
+.invoice__items td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.invoice__items th {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.invoice__items td {
+  color: var(--text-secondary);
+}
+
+.invoice__items td:last-child,
+.invoice__items th:last-child {
+  text-align: right;
+}
+
+.invoice__totals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(100%, 320px);
+  margin-left: auto;
+}
+
+.invoice__total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.invoice__total-row strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.invoice__total-row--grand {
+  padding-top: var(--space-3);
+  border-top: 2px solid var(--border-strong);
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: 950;
+}
+
+.invoice__total-row--grand strong {
+  color: var(--primary);
+}
+
+.invoice__payment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-muted);
+}
+
+.invoice__payment-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.invoice__payment-value {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 900;
+}
+
+/* ---------------------------------------------------------
+   PAYMENT COLLECTION
+   --------------------------------------------------------- */
+
+.payment-collection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.payment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.payment-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.payment-panel__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 900;
+}
+
+.payment-panel__amount {
+  color: var(--primary);
+  font-size: var(--text-2xl);
+  font-weight: 950;
+  letter-spacing: -0.05em;
+}
+
+.payment-amount-input {
+  position: relative;
+}
+
+.payment-amount-input__symbol {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-lg);
+  font-weight: 800;
+  transform: translateY(-50%);
+}
+
+.payment-amount-input input {
+  padding-left: 34px;
+  font-size: var(--text-xl);
+  font-weight: 900;
+}
+
+/* ---------------------------------------------------------
+   DISCOUNT AND REFUND
+   --------------------------------------------------------- */
+
+.adjustment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+}
+
+.adjustment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.adjustment-row__label {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.adjustment-row__amount {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 900;
+  text-align: right;
+}
+
+/* ---------------------------------------------------------
+   RECEIPT PREVIEW
+   --------------------------------------------------------- */
+
+.receipt-preview {
+  width: min(100%, 420px);
+  margin: 0 auto;
+  padding: var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-family: var(--font-mono);
+}
+
+.receipt-preview__header {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px dashed var(--border-strong);
+  text-align: center;
+}
+
+.receipt-preview__clinic {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.receipt-preview__meta {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.receipt-preview__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+}
+
+.receipt-preview__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.receipt-preview__row strong {
+  color: var(--text-primary);
+  font-weight: 900;
+  text-align: right;
+}
+
+.receipt-preview__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border-strong);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 950;
+}
+
+.receipt-preview__footer {
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------
+   BILLING STATUS
+   --------------------------------------------------------- */
+
+.billing-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.billing-status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.billing-status--paid {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+
+.billing-status--partial {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+}
+
+.billing-status--pending {
+  color: var(--color-info);
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+}
+
+.billing-status--refunded,
+.billing-status--cancelled {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE
+   --------------------------------------------------------- */
+
+@media (max-width: 1280px) {
+  .lab-kpi-grid,
+  .billing-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-collection {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .payment-collection {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .invoice__patient,
+  .report-preview__patient {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .result-table__range {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 768px) {
+  .lab-dashboard__header {
+    flex-direction: column;
+  }
+
+  .lab-dashboard__actions {
+    width: 100%;
+  }
+
+  .lab-dashboard__actions > * {
+    flex: 1 1 auto;
+  }
+
+  .lab-worklist__filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lab-worklist__filters > * {
+    width: 100%;
+  }
+
+  .sample-card {
+    flex-direction: column;
+  }
+
+  .sample-card__actions {
+    width: 100%;
+  }
+
+  .sample-card__actions > * {
+    flex: 1 1 auto;
+  }
+
+  .result-entry__actions {
+    width: 100%;
+  }
+
+  .result-entry__actions > * {
+    flex: 1 1 auto;
+  }
+
+  .report-preview__header,
+  .invoice__header {
+    flex-direction: column;
+  }
+
+  .report-preview__title,
+  .report-preview__subtitle,
+  .invoice__number {
+    text-align: left;
+  }
+
+  .report-preview__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-preview__signature {
+    width: 100%;
+  }
+
+  .adjustment-row {
+    grid-template-columns: minmax(0, 1fr) 100px;
+  }
+
+  .adjustment-row__amount {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .adjustment-row > button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 540px) {
+  .lab-kpi-grid,
+  .billing-kpi-grid,
+  .invoice__patient,
+  .report-preview__patient {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lab-kpi,
+  .billing-kpi {
+    padding: var(--space-3);
+  }
+
+  .report-preview,
+  .invoice,
+  .payment-panel,
+  .adjustment-panel {
+    padding: var(--space-3);
+  }
+
+  .invoice__brand {
+    align-items: flex-start;
+  }
+
+  .invoice__items,
+  .report-preview__table,
+  .result-table {
+    min-width: 620px;
+  }
+
+  .invoice,
+  .report-preview,
+  .result-entry {
+    overflow-x: auto;
+  }
+
+  .receipt-preview {
+    padding: var(--space-4);
+  }
+
+  .payment-collection {
+    gap: var(--space-3);
+  }
+
+  .payment-methods {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  .lab-dashboard__actions,
+  .result-entry__actions,
+  .billing-dashboard .workflow-toolbar,
+  .invoice__actions {
+    display: none !important;
+  }
+
+  .report-preview,
+  .invoice,
+  .receipt-preview {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .report-preview__header,
+  .invoice__header {
+    break-inside: avoid;
+  }
+}
+
+/* ---------------------------------------------------------
+   DARK THEME
+   --------------------------------------------------------- */
+
+[data-theme="dark"] .lab-kpi__icon {
+  background: rgba(59, 130, 246, 0.14);
+}
+
+[data-theme="dark"] .sample-card__icon {
+  background: rgba(14, 165, 233, 0.14);
+}
+
+[data-theme="dark"] .report-preview__patient,
+[data-theme="dark"] .invoice__patient,
+[data-theme="dark"] .invoice__payment,
+[data-theme="dark"] .receipt-preview {
+  background: var(--surface-elevated);
+}
