@@ -1,0 +1,293 @@
+:root {
+  /* ========================================
+     AURA CLINIC DESIGN TOKENS
+     Premium Healthcare SaaS
+     ======================================== */
+
+  /* ---------- Brand Colors ---------- */
+
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+
+  --color-primary: var(--color-primary-600);
+  --color-primary-hover: var(--color-primary-700);
+  --color-primary-active: var(--color-primary-800);
+  --color-primary-soft: var(--color-primary-50);
+
+
+  /* ---------- Teal Accent ---------- */
+
+  --color-teal-50: #f0fdfa;
+  --color-teal-100: #ccfbf1;
+  --color-teal-200: #99f6e4;
+  --color-teal-300: #5eead4;
+  --color-teal-400: #2dd4bf;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0d9488;
+  --color-teal-700: #0f766e;
+  --color-teal-800: #115e59;
+  --color-teal-900: #134e4a;
+
+  --color-accent: var(--color-teal-600);
+  --color-accent-hover: var(--color-teal-700);
+  --color-accent-soft: var(--color-teal-50);
+
+
+  /* ---------- Neutral Colors ---------- */
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-gray-25: #fcfcfd;
+  --color-gray-50: #f8fafc;
+  --color-gray-100: #f1f5f9;
+  --color-gray-200: #e2e8f0;
+  --color-gray-300: #cbd5e1;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1e293b;
+  --color-gray-900: #0f172a;
+
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-muted: #f1f5f9;
+
+  --color-text: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #94a3b8;
+
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+  --color-border-strong: #cbd5e1;
+
+
+  /* ---------- Semantic Colors ---------- */
+
+  --color-success: #15803d;
+  --color-success-light: #dcfce7;
+  --color-success-soft: #f0fdf4;
+
+  --color-warning: #b45309;
+  --color-warning-light: #fef3c7;
+  --color-warning-soft: #fffbeb;
+
+  --color-danger: #b91c1c;
+  --color-danger-light: #fee2e2;
+  --color-danger-soft: #fef2f2;
+
+  --color-info: #0369a1;
+  --color-info-light: #e0f2fe;
+  --color-info-soft: #f0f9ff;
+
+
+  /* ---------- Dark Sidebar ---------- */
+
+  --color-sidebar: #0b1220;
+  --color-sidebar-raised: #111c2e;
+  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+
+  --color-sidebar-text: #cbd5e1;
+  --color-sidebar-muted: #94a3b8;
+  --color-sidebar-active: #ffffff;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --color-sidebar-active-bg: rgba(37, 99, 235, 0.18);
+
+
+  /* ---------- Typography ---------- */
+
+  --font-family-sans:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  --font-family-mono:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+
+
+  /* Font Sizes */
+
+  --font-size-xs: 0.6875rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.9375rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+
+
+  /* Font Weights */
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+
+  /* Line Heights */
+
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+
+
+  /* ---------- Spacing ---------- */
+
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+
+  /* ---------- Layout ---------- */
+
+  --sidebar-width: 250px;
+  --sidebar-width-collapsed: 76px;
+  --header-height: 72px;
+  --mobile-nav-height: 68px;
+
+  --content-max-width: 1600px;
+  --content-padding-x: 2rem;
+  --content-padding-y: 1.75rem;
+
+
+  /* ---------- Border Radius ---------- */
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+
+  /* ---------- Borders ---------- */
+
+  --border-width: 1px;
+  --border-width-strong: 2px;
+
+
+  /* ---------- Shadows ---------- */
+
+  --shadow-xs:
+    0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --shadow-sm:
+    0 1px 3px rgba(15, 23, 42, 0.06),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --shadow-md:
+    0 4px 12px rgba(15, 23, 42, 0.08);
+
+  --shadow-lg:
+    0 10px 25px rgba(15, 23, 42, 0.10);
+
+  --shadow-xl:
+    0 20px 40px rgba(15, 23, 42, 0.12);
+
+
+  /* ---------- Transitions ---------- */
+
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+  --transition-slow: 280ms ease;
+
+
+  /* ---------- Z-Index ---------- */
+
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-sidebar: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-toast: 600;
+
+
+  /* ---------- Form Controls ---------- */
+
+  --input-height: 42px;
+  --input-height-sm: 36px;
+  --input-height-lg: 48px;
+
+  --focus-ring:
+    0 0 0 3px rgba(37, 99, 235, 0.18);
+
+
+  /* ---------- Compatibility Aliases ---------- */
+
+  --primary: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --primary-soft: var(--color-primary-soft);
+
+  --surface: var(--color-surface);
+  --surface-muted: var(--color-surface-muted);
+
+  --background: var(--color-background);
+
+  --text: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+
+  --border: var(--color-border);
+
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
+  --info: var(--color-info);
+}
+
+
+/* ========================================
+   DARK THEME FOUNDATION
+   Reserved for future implementation
+   ======================================== */
+
+[data-theme="dark"] {
+  --color-background: #080d16;
+  --color-surface: #0f1724;
+  --color-surface-raised: #162033;
+  --color-surface-muted: #172235;
+
+  --color-text: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-text-subtle: #64748b;
+
+  --color-border: #263449;
+  --color-border-light: #1b2738;
+  --color-border-strong: #334155;
+}
