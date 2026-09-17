@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  />
+
+  <meta
+    name="description"
+    content="AURA Clinic — Premium Clinic Management System"
+  />
+
+  <meta name="theme-color" content="#0B1220" />
+
+  <title>AURA Clinic</title>
+
+  <!-- Base Styles -->
+  <link rel="stylesheet" href="frontend/css/tokens.css" />
+  <link rel="stylesheet" href="frontend/css/base.css" />
+  <link rel="stylesheet" href="frontend/css/layout.css" />
+  <link rel="stylesheet" href="frontend/css/components.css" />
+  <link rel="stylesheet" href="frontend/css/responsive.css" />
+
+  <!-- Feature Styles -->
+  <link rel="stylesheet" href="frontend/css/clinical-workflow.css" />
+  <link rel="stylesheet" href="frontend/css/workflow-validation.css" />
+  <link rel="stylesheet" href="frontend/css/lab-billing.css" />
+  <link rel="stylesheet" href="frontend/css/workspace.css" />
+</head>
+
+<body>
+
+  <!-- Application Root -->
+  <div id="app">
+
+    <!-- Loading Screen -->
+    <div id="app-loading" class="app-loading">
+      <div class="loading-content">
+        <div class="brand-mark">A</div>
+        <h1>AURA Clinic</h1>
+        <p>Loading clinical workspace...</p>
+      </div>
+    </div>
+
+
+    <!-- Authentication Screen -->
+    <section
+      id="auth-screen"
+      class="screen auth-screen"
+      hidden
+    >
+      <div id="auth-container"></div>
+    </section>
+
+
+    <!-- Main Application -->
+    <div
+      id="application-shell"
+      class="application-shell"
+      hidden
+    >
+
+      <!-- Sidebar -->
+      <aside
+        id="sidebar"
+        class="sidebar"
+        aria-label="Primary navigation"
+      >
+
+        <div class="sidebar-header">
+          <a href="#dashboard" class="brand">
+            <span class="brand-logo">A</span>
+
+            <span class="brand-text">
+              <strong>AURA</strong>
+              <small>Clinic</small>
+            </span>
+          </a>
+
+          <button
+            id="sidebar-close"
+            class="icon-button mobile-only"
+            type="button"
+            aria-label="Close navigation"
+          >
+            ×
+          </button>
+        </div>
+
+
+        <!-- Organization Context -->
+        <div
+          id="organization-context"
+          class="organization-context"
+        >
+          <span class="organization-label">Organization</span>
+          <strong id="organization-name">Clinic</strong>
+        </div>
+
+
+        <!-- Navigation -->
+        <nav
+          id="main-navigation"
+          class="main-navigation"
+          aria-label="Main navigation"
+        >
+
+          <div class="nav-section">
+            <span class="nav-section-title">Workspace</span>
+
+            <a
+              href="#dashboard"
+              class="nav-item"
+              data-route="dashboard"
+            >
+              <span class="nav-icon">⌂</span>
+              <span>Dashboard</span>
+            </a>
+
+            <a
+              href="#patients"
+              class="nav-item"
+              data-route="patients"
+            >
+              <span class="nav-icon">◉</span>
+              <span>Patients</span>
+            </a>
+
+            <a
+              href="#registration"
+              class="nav-item"
+              data-route="registration"
+            >
+              <span class="nav-icon">＋</span>
+              <span>Registration</span>
+            </a>
+
+            <a
+              href="#queue"
+              class="nav-item"
+              data-route="queue"
+            >
+              <span class="nav-icon">☷</span>
+              <span>Queue</span>
+            </a>
+          </div>
+
+
+          <div class="nav-section">
+            <span class="nav-section-title">Clinical</span>
+
+            <a
+              href="#nursing"
+              class="nav-item"
+              data-route="nursing"
+            >
+              <span class="nav-icon">♥</span>
+              <span>Nursing</span>
+            </a>
+
+            <a
+              href="#doctor"
+              class="nav-item"
+              data-route="doctor"
+            >
+              <span class="nav-icon">✚</span>
+              <span>Doctor Consultation</span>
+            </a>
+
+            <a
+              href="#laboratory"
+              class="nav-item"
+              data-route="laboratory"
+            >
+              <span class="nav-icon">◈</span>
+              <span>Laboratory</span>
+            </a>
+
+            <a
+              href="#billing"
+              class="nav-item"
+              data-route="billing"
+            >
+              <span class="nav-icon">▣</span>
+              <span>Billing</span>
+            </a>
+          </div>
+
+
+          <div class="nav-section">
+            <span class="nav-section-title">Management</span>
+
+            <a
+              href="#staff"
+              class="nav-item"
+              data-route="staff"
+            >
+              <span class="nav-icon">♙</span>
+              <span>Staff</span>
+            </a>
+
+            <a
+              href="#reports"
+              class="nav-item"
+              data-route="reports"
+            >
+              <span class="nav-icon">▥</span>
+              <span>Reports</span>
+            </a>
+
+            <a
+              href="#settings"
+              class="nav-item"
+              data-route="settings"
+            >
+              <span class="nav-icon">⚙</span>
+              <span>Settings</span>
+            </a>
+          </div>
+
+        </nav>
+
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+
+          <div
+            id="sidebar-user"
+            class="sidebar-user"
+          >
+            <div
+              id="sidebar-user-avatar"
+              class="avatar avatar-sm"
+            >
+              A
+            </div>
+
+            <div class="sidebar-user-info">
+              <strong id="sidebar-user-name">Administrator</strong>
+              <span id="sidebar-user-role">Administrator</span>
+            </div>
+          </div>
+
+        </div>
+
+      </aside>
+
+
+      <!-- Main Content Area -->
+      <div class="main-area">
+
+        <!-- Top Header -->
+        <header class="topbar">
+
+          <div class="topbar-left">
+
+            <button
+              id="sidebar-toggle"
+              class="icon-button"
+              type="button"
+              aria-label="Open navigation"
+            >
+              ☰
+            </button>
+
+            <div class="breadcrumb-container">
+              <span
+                id="breadcrumb-section"
+                class="breadcrumb-section"
+              >
+                Workspace
+              </span>
+
+              <span class="breadcrumb-separator">/</span>
+
+              <strong
+                id="breadcrumb-page"
+                class="breadcrumb-page"
+              >
+                Dashboard
+              </strong>
+            </div>
+
+          </div>
+
+
+          <div class="topbar-right">
+
+            <!-- Search -->
+            <button
+              id="global-search-button"
+              class="header-action"
+              type="button"
+              aria-label="Search"
+            >
+              ⌕
+            </button>
+
+
+            <!-- Notifications -->
+            <button
+              id="notifications-button"
+              class="header-action notification-button"
+              type="button"
+              aria-label="Notifications"
+            >
+              ♢
+              <span
+                id="notification-count"
+                class="notification-count"
+                hidden
+              >
+                0
+              </span>
+            </button>
+
+
+            <!-- User Menu -->
+            <div
+              id="user-menu"
+              class="user-menu"
+            >
+              <button
+                id="user-menu-button"
+                class="user-menu-button"
+                type="button"
+                aria-expanded="false"
+              >
+                <span
+                  id="header-user-avatar"
+                  class="avatar avatar-sm"
+                >
+                  A
+                </span>
+
+                <span class="user-menu-text">
+                  <strong id="header-user-name">Administrator</strong>
+                  <small id="header-user-role">Administrator</small>
+                </span>
+
+                <span class="user-menu-chevron">⌄</span>
+              </button>
+
+              <div
+                id="user-dropdown"
+                class="user-dropdown"
+                hidden
+              >
+                <a href="#profile" class="dropdown-item">
+                  My Profile
+                </a>
+
+                <a href="#settings" class="dropdown-item">
+                  Settings
+                </a>
+
+                <button
+                  id="logout-button"
+                  class="dropdown-item dropdown-danger"
+                  type="button"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        </header>
+
+
+        <!-- Page Content -->
+        <main
+          id="main-content"
+          class="main-content"
+          tabindex="-1"
+        >
+
+          <!-- Dynamic pages are rendered here -->
+
+          <section
+            id="page-container"
+            class="page-container"
+          >
+          </section>
+
+        </main>
+
+
+        <!-- Mobile Bottom Navigation -->
+        <nav
+          id="mobile-bottom-navigation"
+          class="mobile-bottom-navigation"
+          aria-label="Mobile navigation"
+        >
+
+          <a
+            href="#dashboard"
+            class="bottom-nav-item"
+            data-route="dashboard"
+          >
+            <span class="bottom-nav-icon">⌂</span>
+            <span>Home</span>
+          </a>
+
+          <a
+            href="#patients"
+            class="bottom-nav-item"
+            data-route="patients"
+          >
+            <span class="bottom-nav-icon">◉</span>
+            <span>Patients</span>
+          </a>
+
+          <a
+            href="#queue"
+            class="bottom-nav-item"
+            data-route="queue"
+          >
+            <span class="bottom-nav-icon">☷</span>
+            <span>Queue</span>
+          </a>
+
+          <a
+            href="#billing"
+            class="bottom-nav-item"
+            data-route="billing"
+          >
+            <span class="bottom-nav-icon">▣</span>
+            <span>Billing</span>
+          </a>
+
+          <a
+            href="#more"
+            class="bottom-nav-item"
+            data-route="more"
+          >
+            <span class="bottom-nav-icon">•••</span>
+            <span>More</span>
+          </a>
+
+        </nav>
+
+      </div>
+
+    </div>
+
+
+    <!-- Global Toast Notifications -->
+    <div
+      id="toast-container"
+      class="toast-container"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+
+
+    <!-- Global Modal Container -->
+    <div
+      id="modal-container"
+      class="modal-container"
+    ></div>
+
+
+    <!-- Global Confirmation Dialog -->
+    <div
+      id="dialog-container"
+      class="dialog-container"
+    ></div>
+
+  </div>
+
+
+  <!-- Application Scripts -->
+  <script type="module" src="frontend/js/config.js"></script>
+  <script type="module" src="frontend/js/supabase-client.js"></script>
+  <script type="module" src="frontend/js/core/app.js"></script>
+
+</body>
+</html>
