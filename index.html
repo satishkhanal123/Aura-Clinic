@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
+
+    <meta name="theme-color" content="#0B0F19">
+    <meta
+        name="description"
+        content="AURA Clinic — Premium outpatient clinic management system"
+    >
+    <meta name="application-name" content="AURA Clinic">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta
+        name="apple-mobile-web-app-status-bar-style"
+        content="black-translucent"
+    >
+
+    <title>AURA Clinic</title>
+
+    <link
+        rel="icon"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230B0F19'/%3E%3Cpath d='M50 18L82 82H68L61 66H39L32 82H18L50 18ZM50 39L44 54H56L50 39Z' fill='%2357C7FF'/%3E%3C/svg%3E"
+    >
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
+
+    <!-- =========================
+         STYLESHEETS
+    ========================== -->
+
+    <link rel="stylesheet" href="frontend/css/tokens.css">
+    <link rel="stylesheet" href="frontend/css/base.css">
+    <link rel="stylesheet" href="frontend/css/layout.css">
+    <link rel="stylesheet" href="frontend/css/components.css">
+    <link rel="stylesheet" href="frontend/css/responsive.css">
+
+    <link rel="stylesheet" href="frontend/css/clinical-workflow.css">
+    <link rel="stylesheet" href="frontend/css/workflow-validation.css">
+    <link rel="stylesheet" href="frontend/css/lab-billing.css">
+    <link rel="stylesheet" href="frontend/css/workspace.css">
+    <link rel="stylesheet" href="frontend/css/reports.css">
+    <link rel="stylesheet" href="frontend/css/more.css">
+
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        html,
+        body {
+            margin: 0;
+            min-height: 100%;
+            background: #0B0F19;
+        }
+
+        body {
+            color: #F4F7FB;
+            font-family:
+                "DM Sans",
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        #aura-loading-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(
+                    circle at 50% 40%,
+                    rgba(87, 199, 255, 0.09),
+                    transparent 34%
+                ),
+                #0B0F19;
+            transition:
+                opacity 0.3s ease,
+                visibility 0.3s ease;
+        }
+
+        #aura-loading-screen.is-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .aura-loader {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            text-align: center;
+        }
+
+        .aura-loader-mark {
+            width: 58px;
+            height: 58px;
+            display: grid;
+            place-items: center;
+            border: 1px solid rgba(87, 199, 255, 0.35);
+            border-radius: 18px;
+            color: #57C7FF;
+            font-family: "Manrope", sans-serif;
+            font-size: 28px;
+            font-weight: 800;
+            box-shadow: 0 0 30px rgba(87, 199, 255, 0.08);
+        }
+
+        .aura-loader-title {
+            font-family: "Manrope", sans-serif;
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+        }
+
+        .aura-loader-subtitle {
+            margin-top: 5px;
+            color: rgba(244, 247, 251, 0.55);
+            font-size: 12px;
+        }
+
+        .aura-loader-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.12);
+            border-top-color: #57C7FF;
+            border-radius: 50%;
+            animation: aura-spin 0.8s linear infinite;
+        }
+
+        @keyframes aura-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .aura-noscript {
+            max-width: 480px;
+            margin: 40px auto;
+            padding: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            background: #151B28;
+            color: #F4F7FB;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- =====================================================
+         LOADING SCREEN
+    ====================================================== -->
+
+    <div id="aura-loading-screen" aria-label="Loading AURA Clinic">
+        <div class="aura-loader">
+            <div class="aura-loader-mark">A</div>
+
+            <div>
+                <div class="aura-loader-title">
+                    AURA Clinic
+                </div>
+
+                <div class="aura-loader-subtitle">
+                    Initializing workspace...
+                </div>
+            </div>
+
+            <div class="aura-loader-spinner"></div>
+        </div>
+    </div>
+
+
+    <!-- =====================================================
+         APPLICATION ROOT
+         IMPORTANT: id="app" is required by the JavaScript modules.
+    ====================================================== -->
+
+    <div id="app" class="aura-app">
+
+        <!-- =================================================
+             SIDEBAR
+        ================================================== -->
+
+        <aside
+            id="app-sidebar"
+            class="app-sidebar"
+            aria-label="Primary navigation"
+        >
+
+            <div class="sidebar-brand">
+
+                <a
+                    href="#/dashboard"
+                    class="brand-link"
+                    data-route="dashboard"
+                    aria-label="AURA Clinic Dashboard"
+                >
+                    <span class="brand-mark">A</span>
+
+                    <span class="brand-copy">
+                        <strong>AURA</strong>
+                        <small>CLINIC</small>
+                    </span>
+                </a>
+
+                <button
+                    type="button"
+                    class="icon-button sidebar-close-button"
+                    data-action="close-sidebar"
+                    aria-label="Close navigation"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <div class="sidebar-clinic-context">
+
+                <span class="sidebar-clinic-label">
+                    WORKSPACE
+                </span>
+
+                <strong
+                    id="sidebar-clinic-name"
+                    class="sidebar-clinic-name"
+                >
+                    AURA Clinic
+                </strong>
+
+                <span class="sidebar-clinic-status">
+                    <span class="status-dot status-dot-success"></span>
+                    Local workspace
+                </span>
+
+            </div>
+
+
+            <nav
+                id="primary-navigation"
+                class="sidebar-navigation"
+                aria-label="Main menu"
+            >
+
+                <div class="nav-section-label">
+                    WORKSPACE
+                </div>
+
+                <a href="#/dashboard" class="nav-item" data-route="dashboard">
+                    <span class="nav-icon" aria-hidden="true">⌂</span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+
+                <a href="#/patients" class="nav-item" data-route="patients">
+                    <span class="nav-icon" aria-hidden="true">◉</span>
+                    <span class="nav-label">Patients</span>
+                </a>
+
+                <a
+                    href="#/registration"
+                    class="nav-item"
+                    data-route="registration"
+                >
+                    <span class="nav-icon" aria-hidden="true">＋</span>
+                    <span class="nav-label">Registration</span>
+                </a>
+
+                <a href="#/queue" class="nav-item" data-route="queue">
+                    <span class="nav-icon" aria-hidden="true">☷</span>
+                    <span class="nav-label">Queue</span>
+                </a>
+
+
+                <div class="nav-section-label">
+                    CLINICAL
+                </div>
+
+                <a href="#/nursing" class="nav-item" data-route="nursing">
+                    <span class="nav-icon" aria-hidden="true">♡</span>
+                    <span class="nav-label">Nursing Desk</span>
+                </a>
+
+                <a href="#/doctor" class="nav-item" data-route="doctor">
+                    <span class="nav-icon" aria-hidden="true">✚</span>
+                    <span class="nav-label">Doctor Consultation</span>
+                </a>
+
+                <a
+                    href="#/laboratory"
+                    class="nav-item"
+                    data-route="laboratory"
+                >
+                    <span class="nav-icon" aria-hidden="true">⌬</span>
+                    <span class="nav-label">Laboratory</span>
+                </a>
+
+
+                <div class="nav-section-label">
+                    OPERATIONS
+                </div>
+
+                <a href="#/billing" class="nav-item" data-route="billing">
+                    <span class="nav-icon" aria-hidden="true">₹</span>
+                    <span class="nav-label">Billing &amp; Payments</span>
+                </a>
+
+                <a href="#/staff" class="nav-item" data-route="staff">
+                    <span class="nav-icon" aria-hidden="true">♙</span>
+                    <span class="nav-label">Staff Management</span>
+                </a>
+
+                <a href="#/reports" class="nav-item" data-route="reports">
+                    <span class="nav-icon" aria-hidden="true">▥</span>
+                    <span class="nav-label">Reports</span>
+                </a>
+
+
+                <div class="nav-section-label">
+                    ADMINISTRATION
+                </div>
+
+                <a href="#/more" class="nav-item" data-route="more">
+                    <span class="nav-icon" aria-hidden="true">•••</span>
+                    <span class="nav-label">More</span>
+                </a>
+
+                <a href="#/settings" class="nav-item" data-route="settings">
+                    <span class="nav-icon" aria-hidden="true">⚙</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+
+            </nav>
+
+
+            <div class="sidebar-footer">
+
+                <div class="sidebar-user-card">
+
+                    <div
+                        id="sidebar-user-avatar"
+                        class="avatar avatar-md"
+                    >
+                        A
+                    </div>
+
+                    <div class="sidebar-user-details">
+                        <strong id="sidebar-user-name">
+                            Administrator
+                        </strong>
+
+                        <span id="sidebar-user-role">
+                            Administrator
+                        </span>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="icon-button"
+                        data-action="open-user-menu"
+                        aria-label="Open user menu"
+                    >
+                        ⋮
+                    </button>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+
+        <!-- =================================================
+             APPLICATION SHELL
+        ================================================== -->
+
+        <div class="app-shell">
+
+            <!-- =============================================
+                 HEADER
+            ============================================== -->
+
+            <header id="app-header" class="app-header">
+
+                <div class="header-left">
+
+                    <button
+                        type="button"
+                        class="icon-button mobile-menu-button"
+                        data-action="toggle-sidebar"
+                        aria-label="Open navigation"
+                    >
+                        ☰
+                    </button>
+
+                    <div class="breadcrumb-container">
+
+                        <span
+                            id="breadcrumb-section"
+                            class="breadcrumb-section"
+                        >
+                            Workspace
+                        </span>
+
+                        <span
+                            class="breadcrumb-separator"
+                            aria-hidden="true"
+                        >
+                            /
+                        </span>
+
+                        <strong
+                            id="breadcrumb-page"
+                            class="breadcrumb-page"
+                        >
+                            Dashboard
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <div class="header-right">
+
+                    <!-- GLOBAL SEARCH -->
+
+                    <div
+                        id="global-search-container"
+                        class="global-search-container"
+                    >
+
+                        <button
+                            type="button"
+                            class="global-search-trigger"
+                            data-action="focus-search"
+                            aria-label="Search"
+                        >
+                            <span class="search-icon" aria-hidden="true">
+                                ⌕
+                            </span>
+
+                            <span class="search-placeholder">
+                                Search patients, UHID, records...
+                            </span>
+
+                            <kbd>⌘ K</kbd>
+                        </button>
+
+                        <div
+                            id="global-search-panel"
+                            class="global-search-panel"
+                            hidden
+                        >
+
+                            <div class="global-search-input-wrapper">
+
+                                <span aria-hidden="true">⌕</span>
+
+                                <input
+                                    id="global-search-input"
+                                    type="search"
+                                    autocomplete="off"
+                                    placeholder="Search patients, records, or modules..."
+                                    aria-label="Global search"
+                                >
+
+                                <button
+                                    type="button"
+                                    class="icon-button"
+                                    data-action="close-search"
+                                    aria-label="Close search"
+                                >
+                                    ×
+                                </button>
+
+                            </div>
+
+                            <div
+                                id="global-search-results"
+                                class="global-search-results"
+                            >
+                                <div class="empty-state compact">
+                                    <strong>Start searching</strong>
+                                    <span>
+                                        Search across your clinic workspace.
+                                    </span>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- NOTIFICATIONS -->
+
+                    <button
+                        type="button"
+                        class="icon-button header-action-button"
+                        data-action="open-notifications"
+                        aria-label="Notifications"
+                    >
+                        <span aria-hidden="true">♧</span>
+
+                        <span
+                            id="notification-badge"
+                            class="notification-badge"
+                            hidden
+                        >
+                            0
+                        </span>
+                    </button>
+
+
+                    <!-- THEME -->
+
+                    <button
+                        type="button"
+                        class="icon-button header-action-button"
+                        data-action="toggle-theme"
+                        aria-label="Toggle theme"
+                    >
+                        <span id="theme-icon" aria-hidden="true">
+                            ◐
+                        </span>
+                    </button>
+
+
+                    <!-- USER ACCOUNT -->
+
+                    <button
+                        type="button"
+                        class="header-user-button"
+                        data-action="open-user-menu"
+                        aria-label="Open user account menu"
+                    >
+
+                        <span
+                            id="header-user-avatar"
+                            class="avatar avatar-sm"
+                        >
+                            A
+                        </span>
+
+                        <span class="header-user-copy">
+
+                            <strong id="header-user-name">
+                                Administrator
+                            </strong>
+
+                            <small id="header-user-role">
+                                Administrator
+                            </small>
+
+                        </span>
+
+                        <span aria-hidden="true">⌄</span>
+
+                    </button>
+
+                </div>
+
+            </header>
+
+
+            <!-- =============================================
+                 MAIN CONTENT
+            ============================================== -->
+
+            <main
+                id="app-content"
+                class="app-content"
+                tabindex="-1"
+            >
+
+                <section
+                    id="route-container"
+                    class="route-container"
+                    aria-live="polite"
+                >
+
+                    <div
+                        id="initial-app-state"
+                        class="initial-app-state"
+                    >
+
+                        <div class="page-loading-state">
+
+                            <div class="aura-loader-spinner"></div>
+
+                            <p>Loading AURA Clinic...</p>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </main>
+
+
+            <!-- =============================================
+                 MOBILE BOTTOM NAVIGATION
+            ============================================== -->
+
+            <nav
+                id="mobile-bottom-navigation"
+                class="mobile-bottom-navigation"
+                aria-label="Mobile navigation"
+            >
+
+                <a
+                    href="#/dashboard"
+                    class="mobile-nav-item"
+                    data-route="dashboard"
+                >
+                    <span class="mobile-nav-icon" aria-hidden="true">⌂</span>
+                    <span class="mobile-nav-label">Home</span>
+                </a>
+
+                <a
+                    href="#/patients"
+                    class="mobile-nav-item"
+                    data-route="patients"
+                >
+                    <span class="mobile-nav-icon" aria-hidden="true">◉</span>
+                    <span class="mobile-nav-label">Patients</span>
+                </a>
+
+                <a
+                    href="#/registration"
+                    class="mobile-nav-item mobile-nav-primary"
+                    data-route="registration"
+                >
+                    <span
+                        class="mobile-nav-primary-icon"
+                        aria-hidden="true"
+                    >
+                        ＋
+                    </span>
+                    <span class="mobile-nav-label">Register</span>
+                </a>
+
+                <a
+                    href="#/queue"
+                    class="mobile-nav-item"
+                    data-route="queue"
+                >
+                    <span class="mobile-nav-icon" aria-hidden="true">☷</span>
+                    <span class="mobile-nav-label">Queue</span>
+                </a>
+
+                <a
+                    href="#/more"
+                    class="mobile-nav-item"
+                    data-route="more"
+                >
+                    <span class="mobile-nav-icon" aria-hidden="true">•••</span>
+                    <span class="mobile-nav-label">More</span>
+                </a>
+
+            </nav>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         GLOBAL OVERLAY ROOTS
+    ====================================================== -->
+
+    <div
+        id="app-modal-root"
+        class="app-modal-root"
+        aria-live="polite"
+    ></div>
+
+    <div
+        id="app-toast-root"
+        class="app-toast-root"
+        aria-live="polite"
+        aria-atomic="true"
+    ></div>
+
+    <div
+        id="app-drawer-root"
+        class="app-drawer-root"
+    ></div>
+
+    <div
+        id="app-command-palette"
+        class="command-palette-root"
+        hidden
+    ></div>
+
+
+    <!-- =====================================================
+         JAVASCRIPT
+         Load order is important.
+    ====================================================== -->
+
+    <script src="frontend/js/config.js"></script>
+    <script src="frontend/js/supabase-client.js"></script>
+
+    <script src="frontend/js/core/storage.js"></script>
+    <script src="frontend/js/core/events.js"></script>
+    <script src="frontend/js/core/utils.js"></script>
+    <script src="frontend/js/core/router.js"></script>
+
+    <script src="frontend/js/modules/dashboard.js"></script>
+    <script src="frontend/js/modules/patients.js"></script>
+    <script src="frontend/js/modules/registration.js"></script>
+    <script src="frontend/js/modules/queue.js"></script>
+    <script src="frontend/js/modules/nursing.js"></script>
+    <script src="frontend/js/modules/doctor.js"></script>
+    <script src="frontend/js/modules/laboratory.js"></script>
+    <script src="frontend/js/modules/billing.js"></script>
+    <script src="frontend/js/modules/staff.js"></script>
+    <script src="frontend/js/modules/reports.js"></script>
+    <script src="frontend/js/modules/settings.js"></script>
+    <script src="frontend/js/modules/more.js"></script>
+
+    <!-- Application bootstrap must load after all modules -->
+    <script src="frontend/js/core/app.js"></script>
+
+
+    <!-- =====================================================
+         SAFE LOADING SCREEN CONTROL
+    ====================================================== -->
+
+    <script>
+        (function () {
+            "use strict";
+
+            var hidden = false;
+
+            function hideLoadingScreen() {
+                if (hidden) return;
+                hidden = true;
+
+                var loader = document.getElementById(
+                    "aura-loading-screen"
+                );
+
+                if (!loader) return;
+
+                loader.classList.add("is-hidden");
+
+                window.setTimeout(function () {
+                    if (loader && loader.parentNode) {
+                        loader.parentNode.removeChild(loader);
+                    }
+                }, 400);
+            }
+
+            window.addEventListener(
+                "aura:app-ready",
+                hideLoadingScreen,
+                { once: true }
+            );
+
+            window.addEventListener(
+                "aura:app-initialized",
+                hideLoadingScreen,
+                { once: true }
+            );
+
+            document.addEventListener(
+                "DOMContentLoaded",
+                function () {
+                    window.setTimeout(function () {
+                        hideLoadingScreen();
+                    }, 3500);
+                },
+                { once: true }
+            );
+
+            window.addEventListener(
+                "error",
+                function (event) {
+                    if (
+                        event &&
+                        event.error &&
+                        window.AURA_CONFIG &&
+                        window.AURA_CONFIG.development &&
+                        window.AURA_CONFIG.development.debug
+                    ) {
+                        console.error(
+                            "[AURA Clinic] Runtime error:",
+                            event.error
+                        );
+                    }
+                }
+            );
+
+        })();
+    </script>
+
+
+    <noscript>
+        <div class="aura-noscript">
+            <h2>JavaScript Required</h2>
+
+            <p>
+                AURA Clinic requires JavaScript to manage patients,
+                clinical workflows, laboratory records, billing,
+                staff management, and reports.
+            </p>
+
+            <p>
+                Please enable JavaScript in your browser and reload the page.
+            </p>
+        </div>
+    </noscript>
+
+</body>
+</html>
