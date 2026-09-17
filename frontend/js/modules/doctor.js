@@ -1,2939 +1,2665 @@
-/**
- * AURA Clinic
- * Doctor Consultation Module
- *
- * Responsibilities:
- * - Display patients ready for doctor consultation.
- * - Assign and manage doctor consultation queues.
- * - Record consultation notes, diagnosis, prescriptions, and lab orders.
- * - Maintain permanent encounter records linked to UHID.
- * - Move patients to laboratory, pharmacy, billing, or completed status.
- *
- * Storage stores used:
- * - patients
- * - queues
- * - encounters
- * - consultations
- * - prescriptions
- * - labOrders
- * - staff
- *
- * Global dependencies:
- * - window.AURA_CONFIG
- * - window.AURA_STORAGE
- * - window.AURA_EVENTS
- * - window.AURA_UTILS
- * - window.AURA_APP
- * - window.AURA_ROUTER
- */
+/* ============================================================
+   AURA CLINIC — DOCTOR MODULE
+   File: frontend/js/modules/doctor.js
+   Purpose:
+   - Doctor consultation workspace
+   - Assigned patient queue
+   - Clinical history
+   - Vitals review
+   - Consultation notes
+   - Diagnosis
+   - Prescriptions
+   - Laboratory orders
+   - Encounter completion
+============================================================ */
 
-(function () {
-  'use strict';
+(function (window, document) {
+    "use strict";
 
-  const CONFIG = window.AURA_CONFIG || {};
-  const STORAGE = window.AURA_STORAGE || null;
-  const EVENTS = window.AURA_EVENTS || null;
-  const UTILS = window.AURA_UTILS || {};
-  const AURA = window.AURA || {};
+    const STORAGE = window.AURA_STORAGE;
+    const EVENTS = window.AURA_EVENTS;
+    const UTILS = window.AURA_UTILS;
+    const APP = window.AURA_APP;
 
-  const MODULE_NAME = 'doctor';
+    const MODULE_NAME = "doctor";
 
-  const STORE = {
-    patients: 'patients',
-    queues: 'queues',
-    encounters: 'encounters',
-    consultations: 'consultations',
-    prescriptions: 'prescriptions',
-    labOrders: 'labOrders',
-    staff: 'staff'
-  };
+    const STORE = {
+        patients: "patients",
+        queues: "queues",
+        encounters: "encounters",
+        vitals: "vitals",
+        consultations: "consultations",
+        prescriptions: "prescriptions",
+        labOrders: "labOrders",
+        staff: "staff"
+    };
 
-  const STATUS = {
-    WAITING: 'waiting',
-    CALLED: 'called',
-    IN_PROGRESS: 'in-progress',
-    COMPLETED: 'completed',
-    SKIPPED: 'skipped',
-    CANCELLED: 'cancelled'
-  };
+    const state = {
+        patients: [],
+        queues: [],
+        encounters: [],
+        vitals: [],
+        consultations: [],
+        prescriptions: [],
+        labOrders: [],
+        staff: [],
 
-  const state = {
-    isInitialized: false,
-    isLoading: false,
-    isSaving: false,
+        currentDoctor: null,
+        selectedQueue: null,
+        selectedPatient: null,
+        selectedEncounter: null,
 
-    queues: [],
-    patients: [],
-    encounters: [],
-    consultations: [],
-    prescriptions: [],
-    labOrders: [],
-    doctors: [],
+        searchTerm: "",
+        filter: "waiting",
+        initialized: false,
+        loading: false
+    };
 
-    selectedQueue: null,
-    selectedPatient: null,
-    selectedEncounter: null,
+    const DOCTOR_STATUS = [
+        "waiting",
+        "called",
+        "in-progress",
+        "completed",
+        "skipped"
+    ];
 
-    searchTerm: '',
-    selectedStatus: 'all',
-    selectedDoctor: 'all',
-    selectedDepartment: 'all',
+    const consultationTypes = [
+        "General Consultation",
+        "Follow-up Consultation",
+        "Pediatric Consultation",
+        "Emergency Consultation",
+        "Review Consultation"
+    ];
 
-    currentView: 'list',
+    const labTests = [
+        "Complete Blood Count",
+        "Blood Glucose",
+        "Liver Function Test",
+        "Kidney Function Test",
+        "Urine Routine",
+        "Lipid Profile",
+        "Thyroid Profile",
+        "HbA1c",
+        "Electrolytes",
+        "Dengue NS1",
+        "Malaria Test",
+        "Chest X-Ray",
+        "Ultrasound"
+    ];
 
-    filters: {
-      date: 'today'
-    }
-  };
+    const escapeHtml = (value) => {
+        if (UTILS && typeof UTILS.escapeHtml === "function") {
+            return UTILS.escapeHtml(value ?? "");
+        }
 
-  const listeners = [];
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    };
 
-  function getTodayISO() {
-    return new Date().toISOString().slice(0, 10);
-  }
+    const createId = (prefix = "id") => {
+        if (UTILS && typeof UTILS.createId === "function") {
+            return UTILS.createId(prefix);
+        }
 
-  function nowISO() {
-    return new Date().toISOString();
-  }
+        return `${prefix}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+    };
 
-  function createId(prefix) {
-    if (typeof UTILS.createId === 'function') {
-      return UTILS.createId(prefix || 'id');
-    }
+    const now = () => new Date().toISOString();
 
-    return `${prefix || 'id'}_${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-  }
+    const today = () => {
+        return new Date().toISOString().slice(0, 10);
+    };
 
-  function escapeHtml(value) {
-    if (typeof UTILS.escapeHtml === 'function') {
-      return UTILS.escapeHtml(value ?? '');
-    }
+    const formatDate = (value) => {
+        if (!value) return "—";
 
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
+        const date = new Date(value);
 
-  function getPatientName(patient) {
-    if (!patient) return 'Unknown Patient';
+        if (Number.isNaN(date.getTime())) return "—";
 
-    if (patient.fullName) return patient.fullName;
-
-    return [
-      patient.firstName,
-      patient.middleName,
-      patient.lastName
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim() || 'Unknown Patient';
-  }
-
-  function getPatientAge(patient) {
-    if (typeof UTILS.getPatientAge === 'function') {
-      return UTILS.getPatientAge(patient?.dateOfBirth);
-    }
-
-    if (!patient?.dateOfBirth) return '—';
-
-    const birthDate = new Date(patient.dateOfBirth);
-    const today = new Date();
-
-    let age = today.getFullYear() - birthDate.getFullYear();
-
-    const monthDifference = today.getMonth() - birthDate.getMonth();
-
-    if (
-      monthDifference < 0 ||
-      (
-        monthDifference === 0 &&
-        today.getDate() < birthDate.getDate()
-      )
-    ) {
-      age -= 1;
-    }
-
-    return Math.max(age, 0);
-  }
-
-  function getGender(patient) {
-    return (
-      patient?.gender ||
-      patient?.sex ||
-      'Not specified'
-    );
-  }
-
-  function formatDateTime(value) {
-    if (!value) return '—';
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) return '—';
-
-    return date.toLocaleString(undefined, {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  function formatDate(value) {
-    if (!value) return '—';
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) return '—';
-
-    return date.toLocaleDateString(undefined, {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-  }
-
-  function showToast(message, type = 'info', title = '') {
-    if (typeof window.AURA_APP?.toast === 'function') {
-      try {
-        window.AURA_APP.toast({
-          type,
-          title,
-          message
+        return date.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric"
         });
-        return;
-      } catch (error) {
-        console.warn('AURA toast failed:', error);
-      }
-    }
+    };
 
-    if (typeof AURA.toast === 'function') {
-      try {
-        AURA.toast({
-          type,
-          title,
-          message
+    const formatDateTime = (value) => {
+        if (!value) return "—";
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) return "—";
+
+        return date.toLocaleString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
         });
-        return;
-      } catch (error) {
-        console.warn('AURA toast failed:', error);
-      }
-    }
-
-    console.log(`[${type}] ${title ? `${title}: ` : ''}${message}`);
-  }
-
-  function emit(eventName, detail = {}) {
-    if (typeof EVENTS?.emit === 'function') {
-      EVENTS.emit(eventName, detail);
-    }
-
-    try {
-      document.dispatchEvent(
-        new CustomEvent(`aura:${eventName}`, {
-          detail
-        })
-      );
-    } catch (error) {
-      console.warn('Doctor event dispatch failed:', error);
-    }
-  }
-
-  function announce(message) {
-    if (!message || !('speechSynthesis' in window)) return;
-
-    try {
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(message);
-      utterance.lang = 'en-IN';
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-
-      window.speechSynthesis.speak(utterance);
-    } catch (error) {
-      console.warn('Voice announcement failed:', error);
-    }
-  }
-
-  function getElement(selector) {
-    return document.querySelector(selector);
-  }
-
-  function getViewRoot() {
-    return (
-      getElement('[data-route-view="doctor"]') ||
-      getElement('#app-content') ||
-      getElement('#app')
-    );
-  }
-
-  function getQueueDate(queue) {
-    return (
-      queue?.date ||
-      queue?.queueDate ||
-      queue?.createdAt?.slice?.(0, 10) ||
-      ''
-    );
-  }
-
-  function isTodayQueue(queue) {
-    return getQueueDate(queue) === getTodayISO();
-  }
-
-  function isDoctorQueue(queue) {
-    const stage = String(
-      queue?.stage ||
-      queue?.currentStage ||
-      queue?.department ||
-      ''
-    ).toLowerCase();
-
-    const nextStage = String(
-      queue?.nextStage ||
-      ''
-    ).toLowerCase();
-
-    const type = String(
-      queue?.type ||
-      queue?.queueType ||
-      ''
-    ).toLowerCase();
-
-    return (
-      stage.includes('doctor') ||
-      stage.includes('consult') ||
-      nextStage.includes('doctor') ||
-      nextStage.includes('consult') ||
-      type.includes('doctor') ||
-      type.includes('consult')
-    );
-  }
-
-  function isReadyForDoctor(queue) {
-    const status = String(queue?.status || '').toLowerCase();
-
-    const stage = String(
-      queue?.stage ||
-      queue?.currentStage ||
-      queue?.nextStage ||
-      ''
-    ).toLowerCase();
-
-    return (
-      queue?.readyForDoctor === true ||
-      queue?.doctorReady === true ||
-      stage === 'doctor' ||
-      stage === 'doctor-consultation' ||
-      stage === 'consultation' ||
-      (
-        status === STATUS.WAITING &&
-        isDoctorQueue(queue)
-      )
-    );
-  }
-
-  function isActiveDoctorQueue(queue) {
-    const status = String(queue?.status || '').toLowerCase();
-
-    return (
-      status === STATUS.WAITING ||
-      status === STATUS.CALLED ||
-      status === STATUS.IN_PROGRESS
-    );
-  }
-
-  function getQueuePatient(queue) {
-    if (!queue) return null;
-
-    const patientId =
-      queue.patientId ||
-      queue.patient_id ||
-      queue.patient?.id;
-
-    return (
-      state.patients.find(patient => patient.id === patientId) ||
-      queue.patient ||
-      null
-    );
-  }
-
-  function getQueueDoctorId(queue) {
-    return (
-      queue?.doctorId ||
-      queue?.assignedDoctorId ||
-      queue?.assignedTo ||
-      ''
-    );
-  }
-
-  function getDoctorName(doctorId) {
-    if (!doctorId) return 'Unassigned';
-
-    const doctor = state.doctors.find(item => item.id === doctorId);
-
-    if (!doctor) return 'Assigned Doctor';
-
-    return (
-      doctor.fullName ||
-      [
-        doctor.firstName,
-        doctor.middleName,
-        doctor.lastName
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .trim() ||
-      doctor.name ||
-      doctor.displayName ||
-      'Assigned Doctor'
-    );
-  }
-
-  function getStatusLabel(status) {
-    const labels = {
-      waiting: 'Waiting',
-      called: 'Called',
-      'in-progress': 'In consultation',
-      completed: 'Completed',
-      skipped: 'Skipped',
-      cancelled: 'Cancelled'
     };
 
-    return labels[status] || status || 'Unknown';
-  }
-
-  function getStatusClass(status) {
-    const classes = {
-      waiting: 'status-warning',
-      called: 'status-info',
-      'in-progress': 'status-primary',
-      completed: 'status-success',
-      skipped: 'status-muted',
-      cancelled: 'status-danger'
+    const getContainer = () => {
+        return (
+            document.querySelector('[data-route-view="doctor"]') ||
+            document.querySelector("#app-content") ||
+            document.querySelector("#app")
+        );
     };
 
-    return classes[status] || 'status-muted';
-  }
+    const getActiveDoctor = () => {
+        if (state.currentDoctor) return state.currentDoctor;
 
-  function normalizeQueue(queue) {
-    return {
-      ...queue,
-      id: queue.id,
-      patientId: queue.patientId || queue.patient_id || '',
-      tokenNumber:
-        queue.tokenNumber ||
-        queue.token ||
-        queue.queueNumber ||
-        '—',
-      status: String(queue.status || STATUS.WAITING).toLowerCase(),
-      stage: queue.stage || queue.currentStage || '',
-      doctorId: getQueueDoctorId(queue),
-      date: getQueueDate(queue)
+        const authUser =
+            window.AURA_AUTH?.getState?.()?.user ||
+            window.AURA_AUTH?.getUser?.() ||
+            null;
+
+        const staffId =
+            authUser?.staffId ||
+            authUser?.staff_id ||
+            authUser?.id ||
+            null;
+
+        if (staffId) {
+            state.currentDoctor =
+                state.staff.find((staff) =>
+                    staff.id === staffId ||
+                    staff.staffId === staffId ||
+                    staff.userId === staffId
+                ) || null;
+        }
+
+        if (!state.currentDoctor) {
+            state.currentDoctor =
+                state.staff.find((staff) =>
+                    ["doctor", "physician"].includes(
+                        String(staff.role || "").toLowerCase()
+                    )
+                ) || null;
+        }
+
+        return state.currentDoctor;
     };
-  }
 
-  async function loadData() {
-    if (!STORAGE) {
-      console.warn('AURA_STORAGE is unavailable.');
-      return;
-    }
+    const getDoctorName = () => {
+        const doctor = getActiveDoctor();
 
-    state.isLoading = true;
+        if (doctor) {
+            return (
+                doctor.name ||
+                doctor.fullName ||
+                [doctor.firstName, doctor.lastName]
+                    .filter(Boolean)
+                    .join(" ") ||
+                "Doctor"
+            );
+        }
 
-    try {
-      const [
-        queues,
-        patients,
-        encounters,
-        consultations,
-        prescriptions,
-        labOrders,
-        staff
-      ] = await Promise.all([
-        STORAGE.getAll(STORE.queues),
-        STORAGE.getAll(STORE.patients),
-        STORAGE.getAll(STORE.encounters),
-        STORAGE.getAll(STORE.consultations),
-        STORAGE.getAll(STORE.prescriptions),
-        STORAGE.getAll(STORE.labOrders),
-        STORAGE.getAll(STORE.staff)
-      ]);
+        return "Doctor";
+    };
 
-      state.queues = Array.isArray(queues)
-        ? queues.map(normalizeQueue)
-        : [];
+    const getDoctorId = () => {
+        const doctor = getActiveDoctor();
 
-      state.patients = Array.isArray(patients)
-        ? patients
-        : [];
+        return doctor?.id || doctor?.staffId || doctor?.userId || null;
+    };
 
-      state.encounters = Array.isArray(encounters)
-        ? encounters
-        : [];
+    const getPatientName = (patient) => {
+        if (!patient) return "Unknown Patient";
 
-      state.consultations = Array.isArray(consultations)
-        ? consultations
-        : [];
+        return (
+            patient.fullName ||
+            patient.name ||
+            [
+                patient.firstName,
+                patient.middleName,
+                patient.lastName
+            ]
+                .filter(Boolean)
+                .join(" ") ||
+            "Unknown Patient"
+        );
+    };
 
-      state.prescriptions = Array.isArray(prescriptions)
-        ? prescriptions
-        : [];
+    const getPatientAge = (patient) => {
+        if (!patient?.dateOfBirth) return "—";
 
-      state.labOrders = Array.isArray(labOrders)
-        ? labOrders
-        : [];
+        const dob = new Date(patient.dateOfBirth);
+        const current = new Date();
 
-      state.doctors = Array.isArray(staff)
-        ? staff.filter(staffMember => {
-            const role = String(
-              staffMember.role ||
-              staffMember.userRole ||
-              ''
-            ).toLowerCase();
+        let age = current.getFullYear() - dob.getFullYear();
+
+        const monthDifference =
+            current.getMonth() - dob.getMonth();
+
+        if (
+            monthDifference < 0 ||
+            (
+                monthDifference === 0 &&
+                current.getDate() < dob.getDate()
+            )
+        ) {
+            age--;
+        }
+
+        return age >= 0 ? `${age} yrs` : "—";
+    };
+
+    const getPatientById = (patientId) => {
+        return state.patients.find(
+            (patient) => patient.id === patientId
+        );
+    };
+
+    const getQueuePatient = (queue) => {
+        if (!queue) return null;
+
+        return (
+            getPatientById(queue.patientId) ||
+            state.patients.find(
+                (patient) => patient.uhid === queue.uhid
+            ) ||
+            null
+        );
+    };
+
+    const getQueueStatusLabel = (status) => {
+        const labels = {
+            waiting: "Waiting",
+            called: "Called",
+            "in-progress": "In Consultation",
+            completed: "Completed",
+            skipped: "Skipped"
+        };
+
+        return labels[status] || status || "Unknown";
+    };
+
+    const getStatusClass = (status) => {
+        return String(status || "waiting")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-");
+    };
+
+    const getLatestVitals = (patientId) => {
+        return state.vitals
+            .filter((item) => item.patientId === patientId)
+            .sort((a, b) =>
+                new Date(b.recordedAt || b.createdAt || 0) -
+                new Date(a.recordedAt || a.createdAt || 0)
+            )[0] || null;
+    };
+
+    const getPatientEncounters = (patientId) => {
+        return state.encounters
+            .filter((encounter) => encounter.patientId === patientId)
+            .sort((a, b) =>
+                new Date(b.encounterDate || b.createdAt || 0) -
+                new Date(a.encounterDate || a.createdAt || 0)
+            );
+    };
+
+    const getPatientConsultations = (patientId) => {
+        return state.consultations
+            .filter((consultation) => consultation.patientId === patientId)
+            .sort((a, b) =>
+                new Date(b.consultationDate || b.createdAt || 0) -
+                new Date(a.consultationDate || a.createdAt || 0)
+            );
+    };
+
+    const getTodayQueues = () => {
+        return state.queues.filter((queue) => {
+            const queueDate =
+                queue.queueDate ||
+                queue.createdAt?.slice?.(0, 10) ||
+                today();
+
+            return queueDate === today();
+        });
+    };
+
+    const getDoctorQueues = () => {
+        const doctorId = getDoctorId();
+
+        return getTodayQueues().filter((queue) => {
+            if (!queue.assignedDoctorId && !queue.doctorId) {
+                return true;
+            }
 
             return (
-              role.includes('doctor') ||
-              role.includes('physician') ||
-              staffMember.department === 'doctor'
+                queue.assignedDoctorId === doctorId ||
+                queue.doctorId === doctorId
             );
-          })
-        : [];
+        });
+    };
 
-      state.isLoading = false;
-    } catch (error) {
-      state.isLoading = false;
-      console.error('Doctor module loading failed:', error);
-      showToast(
-        'Unable to load the doctor workspace.',
-        'error',
-        'Loading Error'
-      );
-    }
-  }
+    const notify = (type, title, message) => {
+        if (APP && typeof APP.toast === "function") {
+            APP.toast({
+                type,
+                title,
+                message
+            });
 
-  function getFilteredQueues() {
-    const search = state.searchTerm.trim().toLowerCase();
-
-    return state.queues
-      .filter(queue => {
-        if (!isTodayQueue(queue)) return false;
-
-        if (
-          !isDoctorQueue(queue) &&
-          !isReadyForDoctor(queue)
-        ) {
-          return false;
+            return;
         }
 
-        if (
-          state.selectedStatus !== 'all' &&
-          queue.status !== state.selectedStatus
-        ) {
-          return false;
+        if (typeof window.AURA?.toast === "function") {
+            window.AURA.toast({
+                type,
+                title,
+                message
+            });
+
+            return;
         }
 
-        if (
-          state.selectedDoctor !== 'all' &&
-          getQueueDoctorId(queue) !== state.selectedDoctor
-        ) {
-          return false;
+        console.log(`[${type}] ${title}: ${message}`);
+    };
+
+    const emit = (eventName, payload) => {
+        if (EVENTS && typeof EVENTS.emit === "function") {
+            EVENTS.emit(eventName, payload);
         }
 
-        if (
-          state.selectedDepartment !== 'all' &&
-          String(
-            queue.department ||
-            queue.specialty ||
-            ''
-          ).toLowerCase() !== state.selectedDepartment.toLowerCase()
-        ) {
-          return false;
+        if (typeof window.dispatchEvent === "function") {
+            window.dispatchEvent(
+                new CustomEvent(`aura:${eventName}`, {
+                    detail: payload
+                })
+            );
+        }
+    };
+
+    const audit = async (action, details = {}) => {
+        if (!STORAGE) return;
+
+        try {
+            await STORAGE.add?.("auditLogs", {
+                id: createId("audit"),
+                action,
+                module: MODULE_NAME,
+                actorId: getDoctorId(),
+                actorName: getDoctorName(),
+                details,
+                createdAt: now()
+            });
+        } catch (error) {
+            console.warn("Doctor audit log failed:", error);
+        }
+    };
+
+    const loadData = async () => {
+        state.loading = true;
+
+        try {
+            if (!STORAGE) {
+                console.warn("AURA_STORAGE is unavailable.");
+                return;
+            }
+
+            const results = await Promise.all([
+                STORAGE.getAll(STORE.patients),
+                STORAGE.getAll(STORE.queues),
+                STORAGE.getAll(STORE.encounters),
+                STORAGE.getAll(STORE.vitals),
+                STORAGE.getAll(STORE.consultations),
+                STORAGE.getAll(STORE.prescriptions),
+                STORAGE.getAll(STORE.labOrders),
+                STORAGE.getAll(STORE.staff)
+            ]);
+
+            state.patients = results[0] || [];
+            state.queues = results[1] || [];
+            state.encounters = results[2] || [];
+            state.vitals = results[3] || [];
+            state.consultations = results[4] || [];
+            state.prescriptions = results[5] || [];
+            state.labOrders = results[6] || [];
+            state.staff = results[7] || [];
+
+            getActiveDoctor();
+
+        } catch (error) {
+            console.error("Failed to load doctor data:", error);
+            notify(
+                "error",
+                "Loading Failed",
+                "Doctor workspace data could not be loaded."
+            );
+        } finally {
+            state.loading = false;
+        }
+    };
+
+    const getFilteredQueues = () => {
+        let queues = getDoctorQueues();
+
+        if (state.filter !== "all") {
+            queues = queues.filter(
+                (queue) => queue.status === state.filter
+            );
         }
 
-        if (!search) return true;
+        const search = state.searchTerm.trim().toLowerCase();
+
+        if (search) {
+            queues = queues.filter((queue) => {
+                const patient = getQueuePatient(queue);
+
+                const text = [
+                    queue.token,
+                    queue.uhid,
+                    patient?.uhid,
+                    getPatientName(patient),
+                    patient?.phone,
+                    queue.status
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+                    .toLowerCase();
+
+                return text.includes(search);
+            });
+        }
+
+        return queues.sort((a, b) => {
+            const priority = {
+                waiting: 1,
+                called: 2,
+                "in-progress": 3,
+                completed: 4,
+                skipped: 5
+            };
+
+            const priorityDifference =
+                (priority[a.status] || 99) -
+                (priority[b.status] || 99);
+
+            if (priorityDifference !== 0) {
+                return priorityDifference;
+            }
+
+            return (
+                new Date(a.createdAt || 0) -
+                new Date(b.createdAt || 0)
+            );
+        });
+    };
+
+    const calculateStats = () => {
+        const queues = getDoctorQueues();
+
+        return {
+            total: queues.length,
+            waiting: queues.filter(
+                (queue) => queue.status === "waiting"
+            ).length,
+            called: queues.filter(
+                (queue) => queue.status === "called"
+            ).length,
+            inProgress: queues.filter(
+                (queue) => queue.status === "in-progress"
+            ).length,
+            completed: queues.filter(
+                (queue) => queue.status === "completed"
+            ).length,
+            skipped: queues.filter(
+                (queue) => queue.status === "skipped"
+            ).length
+        };
+    };
+
+    const render = () => {
+        const container = getContainer();
+
+        if (!container) return;
+
+        const stats = calculateStats();
+
+        container.innerHTML = `
+            <section class="doctor-workspace" aria-label="Doctor workspace">
+
+                <header class="page-header doctor-page-header">
+                    <div>
+                        <div class="eyebrow">CLINICAL CARE</div>
+                        <h1>Doctor Consultation</h1>
+                        <p class="page-subtitle">
+                            Review patients, record clinical findings, and complete consultations.
+                        </p>
+                    </div>
+
+                    <div class="page-header-actions">
+                        <button
+                            type="button"
+                            class="btn btn-secondary"
+                            data-doctor-action="refresh"
+                        >
+                            <span class="icon">↻</span>
+                            Refresh
+                        </button>
+                    </div>
+                </header>
+
+                <section class="doctor-welcome-card">
+                    <div class="doctor-welcome-content">
+                        <span class="doctor-welcome-label">GOOD ${getGreeting()}</span>
+                        <h2>Dr. ${escapeHtml(getDoctorName().replace(/^Dr\.?\s*/i, ""))}</h2>
+                        <p>
+                            Your consultation workspace is ready for today's patients.
+                        </p>
+                    </div>
+
+                    <div class="doctor-welcome-meta">
+                        <span>${formatDate(new Date())}</span>
+                        <strong>${stats.inProgress} Active Consultation${stats.inProgress === 1 ? "" : "s"}</strong>
+                    </div>
+                </section>
+
+                <section class="kpi-grid doctor-kpi-grid">
+                    ${renderStatCard("Total Patients", stats.total, "calendar", "All patients")}
+                    ${renderStatCard("Waiting", stats.waiting, "clock", "Awaiting consultation")}
+                    ${renderStatCard("In Consultation", stats.inProgress, "activity", "Currently active")}
+                    ${renderStatCard("Completed", stats.completed, "check", "Today's completed")}
+                </section>
+
+                <section class="doctor-main-grid">
+
+                    <div class="doctor-queue-panel panel-card">
+                        <div class="panel-header">
+                            <div>
+                                <h2>Consultation Queue</h2>
+                                <p>Patients assigned to the doctor desk.</p>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="btn btn-primary btn-sm"
+                                data-doctor-action="call-next"
+                            >
+                                Call Next
+                            </button>
+                        </div>
+
+                        <div class="doctor-queue-toolbar">
+                            <label class="search-field">
+                                <span class="search-icon">⌕</span>
+                                <input
+                                    type="search"
+                                    id="doctor-queue-search"
+                                    placeholder="Search patient, UHID, or token..."
+                                    value="${escapeHtml(state.searchTerm)}"
+                                >
+                            </label>
+
+                            <div class="segmented-control" role="tablist">
+                                ${renderFilterButton("waiting", "Waiting")}
+                                ${renderFilterButton("called", "Called")}
+                                ${renderFilterButton("in-progress", "Active")}
+                                ${renderFilterButton("completed", "Completed")}
+                                ${renderFilterButton("all", "All")}
+                            </div>
+                        </div>
+
+                        <div class="doctor-queue-list">
+                            ${renderQueueList()}
+                        </div>
+                    </div>
+
+                    <aside class="doctor-side-panel">
+
+                        <div class="panel-card doctor-summary-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Today's Summary</h2>
+                                    <p>Consultation activity</p>
+                                </div>
+                            </div>
+
+                            ${renderSummaryRows(stats)}
+                        </div>
+
+                        <div class="panel-card doctor-quick-actions">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Quick Actions</h2>
+                                </div>
+                            </div>
+
+                            <div class="quick-action-list">
+                                <button
+                                    type="button"
+                                    class="quick-action"
+                                    data-doctor-action="open-patients"
+                                >
+                                    <span class="quick-action-icon">👥</span>
+                                    <span>
+                                        <strong>Patient Registry</strong>
+                                        <small>Search patient records</small>
+                                    </span>
+                                    <span>›</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="quick-action"
+                                    data-doctor-action="open-laboratory"
+                                >
+                                    <span class="quick-action-icon">🧪</span>
+                                    <span>
+                                        <strong>Laboratory</strong>
+                                        <small>Review lab reports</small>
+                                    </span>
+                                    <span>›</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="quick-action"
+                                    data-doctor-action="open-reports"
+                                >
+                                    <span class="quick-action-icon">📊</span>
+                                    <span>
+                                        <strong>Clinical Reports</strong>
+                                        <small>View consultation activity</small>
+                                    </span>
+                                    <span>›</span>
+                                </button>
+                            </div>
+                        </div>
+
+                    </aside>
+
+                </section>
+
+            </section>
+        `;
+
+        bindEvents();
+    };
+
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+
+        if (hour < 12) return "MORNING";
+        if (hour < 17) return "AFTERNOON";
+        return "EVENING";
+    };
+
+    const renderStatCard = (label, value, icon, description) => {
+        return `
+            <article class="kpi-card doctor-stat-card">
+                <div class="kpi-card-top">
+                    <span class="kpi-label">${escapeHtml(label)}</span>
+                    <span class="kpi-icon">${getIcon(icon)}</span>
+                </div>
+
+                <div class="kpi-value">${escapeHtml(value)}</div>
+                <div class="kpi-description">${escapeHtml(description)}</div>
+            </article>
+        `;
+    };
+
+    const getIcon = (name) => {
+        const icons = {
+            calendar: "▣",
+            clock: "◷",
+            activity: "⌁",
+            check: "✓"
+        };
+
+        return icons[name] || "•";
+    };
+
+    const renderFilterButton = (value, label) => {
+        const active =
+            state.filter === value ? "is-active" : "";
+
+        return `
+            <button
+                type="button"
+                class="segmented-button ${active}"
+                data-doctor-filter="${escapeHtml(value)}"
+                role="tab"
+                aria-selected="${state.filter === value}"
+            >
+                ${escapeHtml(label)}
+            </button>
+        `;
+    };
+
+    const renderQueueList = () => {
+        const queues = getFilteredQueues();
+
+        if (!queues.length) {
+            return `
+                <div class="empty-state doctor-empty-state">
+                    <div class="empty-state-icon">✓</div>
+                    <h3>No patients found</h3>
+                    <p>
+                        There are no patients matching the selected queue filter.
+                    </p>
+                </div>
+            `;
+        }
+
+        return queues.map(renderQueueCard).join("");
+    };
+
+    const renderQueueCard = (queue) => {
+        const patient = getQueuePatient(queue);
+
+        const status = queue.status || "waiting";
+
+        const isActive =
+            state.selectedQueue?.id === queue.id;
+
+        const displayToken =
+            queue.token ||
+            queue.tokenNumber ||
+            "—";
+
+        const patientName = getPatientName(patient);
+
+        return `
+            <article
+                class="doctor-queue-item ${isActive ? "is-selected" : ""}"
+                data-queue-id="${escapeHtml(queue.id)}"
+            >
+                <div class="doctor-queue-token">
+                    <span class="token-label">TOKEN</span>
+                    <strong>${escapeHtml(displayToken)}</strong>
+                </div>
+
+                <div class="doctor-queue-patient">
+                    <div class="avatar avatar-sm">
+                        ${escapeHtml(
+                            patientName
+                                .split(" ")
+                                .map((part) => part.charAt(0))
+                                .slice(0, 2)
+                                .join("")
+                                .toUpperCase()
+                        )}
+                    </div>
+
+                    <div class="doctor-patient-summary">
+                        <strong>${escapeHtml(patientName)}</strong>
+
+                        <span>
+                            ${escapeHtml(patient?.uhid || queue.uhid || "UHID unavailable")}
+                        </span>
+
+                        <small>
+                            ${escapeHtml(patient?.gender || "—")}
+                            ·
+                            ${escapeHtml(getPatientAge(patient))}
+                        </small>
+                    </div>
+                </div>
+
+                <div class="doctor-queue-status">
+                    <span class="status-badge status-${getStatusClass(status)}">
+                        ${escapeHtml(getQueueStatusLabel(status))}
+                    </span>
+                </div>
+
+                <div class="doctor-queue-actions">
+                    ${renderQueueActions(queue)}
+                </div>
+            </article>
+        `;
+    };
+
+    const renderQueueActions = (queue) => {
+        const status = queue.status || "waiting";
+
+        if (status === "waiting") {
+            return `
+                <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    data-doctor-queue-action="call"
+                    data-queue-id="${escapeHtml(queue.id)}"
+                >
+                    Call
+                </button>
+            `;
+        }
+
+        if (status === "called") {
+            return `
+                <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    data-doctor-queue-action="start"
+                    data-queue-id="${escapeHtml(queue.id)}"
+                >
+                    Start
+                </button>
+            `;
+        }
+
+        if (status === "in-progress") {
+            return `
+                <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    data-doctor-queue-action="consult"
+                    data-queue-id="${escapeHtml(queue.id)}"
+                >
+                    Open
+                </button>
+            `;
+        }
+
+        if (status === "completed") {
+            return `
+                <button
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    data-doctor-queue-action="view"
+                    data-queue-id="${escapeHtml(queue.id)}"
+                >
+                    View
+                </button>
+            `;
+        }
+
+        return `
+            <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                data-doctor-queue-action="recall"
+                data-queue-id="${escapeHtml(queue.id)}"
+            >
+                Recall
+            </button>
+        `;
+    };
+
+    const renderSummaryRows = (stats) => {
+        return `
+            <div class="summary-row">
+                <span>Waiting for consultation</span>
+                <strong>${stats.waiting}</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Called patients</span>
+                <strong>${stats.called}</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Active consultations</span>
+                <strong>${stats.inProgress}</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Completed consultations</span>
+                <strong>${stats.completed}</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Skipped patients</span>
+                <strong>${stats.skipped}</strong>
+            </div>
+        `;
+    };
+
+    const bindEvents = () => {
+        const container = getContainer();
+
+        if (!container) return;
+
+        container.querySelectorAll("[data-doctor-filter]")
+            .forEach((button) => {
+                button.addEventListener("click", () => {
+                    state.filter = button.dataset.doctorFilter || "waiting";
+                    render();
+                });
+            });
+
+        const searchInput =
+            container.querySelector("#doctor-queue-search");
+
+        searchInput?.addEventListener("input", (event) => {
+            state.searchTerm = event.target.value || "";
+            renderQueueOnly();
+        });
+
+        container.querySelectorAll("[data-doctor-queue-action]")
+            .forEach((button) => {
+                button.addEventListener("click", () => {
+                    const action = button.dataset.doctorQueueAction;
+                    const queueId = button.dataset.queueId;
+
+                    handleQueueAction(action, queueId);
+                });
+            });
+
+        container.querySelectorAll("[data-doctor-action]")
+            .forEach((button) => {
+                button.addEventListener("click", () => {
+                    handleAction(button.dataset.doctorAction);
+                });
+            });
+
+        container.querySelectorAll("[data-queue-id]")
+            .forEach((item) => {
+                item.addEventListener("click", (event) => {
+                    if (
+                        event.target.closest("button") ||
+                        event.target.closest("a")
+                    ) {
+                        return;
+                    }
+
+                    const queueId = item.dataset.queueId;
+                    openConsultation(queueId);
+                });
+            });
+    };
+
+    const renderQueueOnly = () => {
+        const container = getContainer();
+
+        if (!container) return;
+
+        const list = container.querySelector(".doctor-queue-list");
+
+        if (!list) return;
+
+        list.innerHTML = renderQueueList();
+
+        bindEvents();
+    };
+
+    const handleAction = (action) => {
+        switch (action) {
+            case "refresh":
+                refresh();
+                break;
+
+            case "call-next":
+                callNext();
+                break;
+
+            case "open-patients":
+                navigateTo("patients");
+                break;
+
+            case "open-laboratory":
+                navigateTo("laboratory");
+                break;
+
+            case "open-reports":
+                navigateTo("reports");
+                break;
+
+            default:
+                break;
+        }
+    };
+
+    const navigateTo = (route) => {
+        if (window.AURA_ROUTER?.navigate) {
+            window.AURA_ROUTER.navigate(route);
+            return;
+        }
+
+        if (window.AURA_APP?.navigate) {
+            window.AURA_APP.navigate(route);
+            return;
+        }
+
+        window.location.hash = `#/${route}`;
+    };
+
+    const findQueue = (queueId) => {
+        return state.queues.find((queue) => queue.id === queueId);
+    };
+
+    const updateQueue = async (queueId, updates) => {
+        const queue = findQueue(queueId);
+
+        if (!queue || !STORAGE) return null;
+
+        const updated = {
+            ...queue,
+            ...updates,
+            updatedAt: now()
+        };
+
+        await STORAGE.put(STORE.queues, updated);
+
+        const index = state.queues.findIndex(
+            (item) => item.id === queueId
+        );
+
+        if (index !== -1) {
+            state.queues[index] = updated;
+        }
+
+        return updated;
+    };
+
+    const handleQueueAction = async (action, queueId) => {
+        switch (action) {
+            case "call":
+                await callPatient(queueId);
+                break;
+
+            case "start":
+                await startConsultation(queueId);
+                break;
+
+            case "consult":
+                openConsultation(queueId);
+                break;
+
+            case "view":
+                openConsultation(queueId, true);
+                break;
+
+            case "recall":
+                await recallPatient(queueId);
+                break;
+
+            default:
+                break;
+        }
+    };
+
+    const callPatient = async (queueId) => {
+        const queue = findQueue(queueId);
+
+        if (!queue) return;
+
+        await updateQueue(queueId, {
+            status: "called",
+            calledAt: now(),
+            stage: "doctor",
+            assignedDoctorId: getDoctorId(),
+            doctorId: getDoctorId()
+        });
+
+        emit("queue:called", {
+            queueId,
+            queue
+        });
+
+        await audit("Patient called for consultation", {
+            queueId,
+            token: queue.token,
+            patientId: queue.patientId
+        });
+
+        announcePatient(queue);
+
+        notify(
+            "success",
+            "Patient Called",
+            `Token ${queue.token || "patient"} has been called.`
+        );
+
+        render();
+    };
+
+    const startConsultation = async (queueId) => {
+        const queue = findQueue(queueId);
+
+        if (!queue) return;
 
         const patient = getQueuePatient(queue);
 
-        const haystack = [
-          getPatientName(patient),
-          patient?.uhid,
-          patient?.phone,
-          queue.tokenNumber,
-          queue.id
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
+        await updateQueue(queueId, {
+            status: "in-progress",
+            startedAt: now(),
+            stage: "doctor",
+            assignedDoctorId: getDoctorId(),
+            doctorId: getDoctorId()
+        });
 
-        return haystack.includes(search);
-      })
-      .sort((a, b) => {
-        const statusOrder = {
-          'in-progress': 0,
-          called: 1,
-          waiting: 2,
-          completed: 3,
-          skipped: 4,
-          cancelled: 5
-        };
+        emit("doctor:consultation-started", {
+            queueId,
+            patientId: patient?.id,
+            doctorId: getDoctorId()
+        });
 
-        const statusDifference =
-          (statusOrder[a.status] ?? 99) -
-          (statusOrder[b.status] ?? 99);
+        await audit("Doctor consultation started", {
+            queueId,
+            patientId: patient?.id
+        });
 
-        if (statusDifference !== 0) return statusDifference;
-
-        return (
-          new Date(a.createdAt || 0).getTime() -
-          new Date(b.createdAt || 0).getTime()
-        );
-      });
-  }
-
-  function getStats() {
-    const queues = getFilteredQueues();
-
-    return {
-      total: queues.length,
-      waiting: queues.filter(
-        queue => queue.status === STATUS.WAITING
-      ).length,
-      called: queues.filter(
-        queue => queue.status === STATUS.CALLED
-      ).length,
-      inProgress: queues.filter(
-        queue => queue.status === STATUS.IN_PROGRESS
-      ).length,
-      completed: queues.filter(
-        queue => queue.status === STATUS.COMPLETED
-      ).length
+        openConsultation(queueId);
     };
-  }
 
-  function getPatientEncounter(patientId) {
-    if (!patientId) return null;
+    const recallPatient = async (queueId) => {
+        const queue = findQueue(queueId);
 
-    const encounters = state.encounters
-      .filter(encounter => {
-        return (
-          encounter.patientId === patientId ||
-          encounter.patient_id === patientId
+        if (!queue) return;
+
+        await updateQueue(queueId, {
+            status: "called",
+            recalledAt: now()
+        });
+
+        announcePatient(queue);
+
+        notify(
+            "success",
+            "Patient Recalled",
+            `Token ${queue.token || "patient"} has been recalled.`
         );
-      })
-      .sort((a, b) => {
-        return (
-          new Date(b.createdAt || b.encounterDate || 0).getTime() -
-          new Date(a.createdAt || a.encounterDate || 0).getTime()
+
+        render();
+    };
+
+    const callNext = async () => {
+        const queues = getDoctorQueues();
+
+        const nextPatient = queues.find(
+            (queue) => queue.status === "waiting"
         );
-      });
 
-    return encounters[0] || null;
-  }
+        if (!nextPatient) {
+            notify(
+                "info",
+                "Queue Empty",
+                "There are no waiting patients in the doctor queue."
+            );
 
-  function getPatientVitals(patientId) {
-    if (!patientId) return null;
-
-    const vitals = [];
-
-    state.encounters.forEach(encounter => {
-      if (
-        encounter.patientId === patientId ||
-        encounter.patient_id === patientId
-      ) {
-        if (encounter.vitals) {
-          vitals.push({
-            ...encounter.vitals,
-            recordedAt: encounter.updatedAt || encounter.createdAt
-          });
+            return;
         }
-      }
-    });
 
-    return vitals.sort((a, b) => {
-      return (
-        new Date(b.recordedAt || 0).getTime() -
-        new Date(a.recordedAt || 0).getTime()
-      );
-    })[0] || null;
-  }
+        await callPatient(nextPatient.id);
+    };
 
-  function getPatientLabResults(patientId) {
-    return state.labOrders
-      .filter(order => {
-        return (
-          order.patientId === patientId ||
-          order.patient_id === patientId
+    const announcePatient = (queue) => {
+        if (!("speechSynthesis" in window)) return;
+
+        const patient = getQueuePatient(queue);
+
+        const token = queue.token || queue.tokenNumber || "";
+
+        const patientName = getPatientName(patient);
+
+        const text = `Token ${token}. ${patientName}, please proceed to the doctor consultation room.`;
+
+        try {
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+
+            window.speechSynthesis.speak(utterance);
+        } catch (error) {
+            console.warn("Voice announcement failed:", error);
+        }
+    };
+
+    const openConsultation = async (queueId, readOnly = false) => {
+        const queue = findQueue(queueId);
+
+        if (!queue) return;
+
+        const patient = getQueuePatient(queue);
+
+        if (!patient) {
+            notify(
+                "error",
+                "Patient Not Found",
+                "The patient record linked to this queue entry could not be found."
+            );
+
+            return;
+        }
+
+        state.selectedQueue = queue;
+        state.selectedPatient = patient;
+
+        const encounters = getPatientEncounters(patient.id);
+
+        state.selectedEncounter =
+            encounters.find(
+                (encounter) =>
+                    encounter.id === queue.encounterId
+            ) ||
+            encounters.find(
+                (encounter) =>
+                    encounter.status === "open" ||
+                    encounter.status === "in-progress"
+            ) ||
+            null;
+
+        renderConsultationWorkspace(readOnly);
+    };
+
+    const renderConsultationWorkspace = (readOnly = false) => {
+        const container = getContainer();
+
+        if (!container || !state.selectedPatient) return;
+
+        const patient = state.selectedPatient;
+        const queue = state.selectedQueue;
+        const vitals = getLatestVitals(patient.id);
+        const encounters = getPatientEncounters(patient.id);
+        const consultations = getPatientConsultations(patient.id);
+
+        const consultation =
+            consultations.find(
+                (item) =>
+                    item.encounterId === state.selectedEncounter?.id
+            ) || {};
+
+        container.innerHTML = `
+            <section class="doctor-consultation-workspace">
+
+                <header class="page-header">
+                    <div>
+                        <button
+                            type="button"
+                            class="btn btn-ghost btn-sm"
+                            data-doctor-consult-action="back"
+                        >
+                            ← Back to Queue
+                        </button>
+
+                        <div class="eyebrow">PATIENT CONSULTATION</div>
+                        <h1>${escapeHtml(getPatientName(patient))}</h1>
+                        <p class="page-subtitle">
+                            ${escapeHtml(patient.uhid || "UHID unavailable")}
+                            ·
+                            ${escapeHtml(patient.gender || "—")}
+                            ·
+                            ${escapeHtml(getPatientAge(patient))}
+                        </p>
+                    </div>
+
+                    <div class="page-header-actions">
+                        <span class="status-badge status-${getStatusClass(queue?.status)}">
+                            ${escapeHtml(getQueueStatusLabel(queue?.status))}
+                        </span>
+                    </div>
+                </header>
+
+                <section class="patient-identity-banner">
+                    <div class="patient-identity-avatar">
+                        ${escapeHtml(
+                            getPatientName(patient)
+                                .split(" ")
+                                .map((part) => part.charAt(0))
+                                .slice(0, 2)
+                                .join("")
+                                .toUpperCase()
+                        )}
+                    </div>
+
+                    <div class="patient-identity-main">
+                        <h2>${escapeHtml(getPatientName(patient))}</h2>
+                        <div class="patient-identity-meta">
+                            <span>UHID: ${escapeHtml(patient.uhid || "—")}</span>
+                            <span>Phone: ${escapeHtml(patient.phone || "—")}</span>
+                            <span>Blood Group: ${escapeHtml(patient.bloodGroup || "—")}</span>
+                        </div>
+                    </div>
+
+                    <div class="patient-identity-actions">
+                        <button
+                            type="button"
+                            class="btn btn-secondary btn-sm"
+                            data-doctor-consult-action="patient-profile"
+                        >
+                            Patient Profile
+                        </button>
+                    </div>
+                </section>
+
+                <section class="doctor-consultation-grid">
+
+                    <main class="doctor-consultation-main">
+
+                        ${renderVitalsCard(vitals)}
+
+                        ${renderClinicalForm(consultation, readOnly)}
+
+                    </main>
+
+                    <aside class="doctor-consultation-sidebar">
+
+                        ${renderPatientHistory(encounters)}
+
+                        ${renderPreviousConsultations(consultations)}
+
+                    </aside>
+
+                </section>
+
+            </section>
+        `;
+
+        bindConsultationEvents(readOnly);
+    };
+
+    const renderVitalsCard = (vitals) => {
+        return `
+            <section class="panel-card clinical-vitals-card">
+                <div class="panel-header">
+                    <div>
+                        <h2>Latest Vitals</h2>
+                        <p>Recorded during pre-consultation.</p>
+                    </div>
+
+                    <span class="panel-header-note">
+                        ${escapeHtml(formatDateTime(vitals?.recordedAt || vitals?.createdAt))}
+                    </span>
+                </div>
+
+                ${
+                    vitals
+                        ? `
+                            <div class="vitals-grid">
+                                ${renderVital("Temperature", vitals.temperature, "°C")}
+                                ${renderVital("Pulse", vitals.pulse, "bpm")}
+                                ${renderVital("Respiratory Rate", vitals.respiratoryRate, "/min")}
+                                ${renderVital("Blood Pressure", vitals.bloodPressure, "mmHg")}
+                                ${renderVital("SpO₂", vitals.oxygenSaturation || vitals.spo2, "%")}
+                                ${renderVital("Weight", vitals.weight, "kg")}
+                                ${renderVital("Height", vitals.height, "cm")}
+                                ${renderVital("BMI", vitals.bmi, "")}
+                            </div>
+                        `
+                        : `
+                            <div class="empty-inline">
+                                No vitals have been recorded for this patient.
+                            </div>
+                        `
+                }
+            </section>
+        `;
+    };
+
+    const renderVital = (label, value, unit) => {
+        return `
+            <div class="vital-item">
+                <span class="vital-label">${escapeHtml(label)}</span>
+                <strong class="vital-value">
+                    ${escapeHtml(value ?? "—")}
+                    <small>${escapeHtml(unit)}</small>
+                </strong>
+            </div>
+        `;
+    };
+
+    const renderClinicalForm = (consultation, readOnly) => {
+        const disabled = readOnly ? "disabled" : "";
+
+        return `
+            <section class="panel-card consultation-form-card">
+                <div class="panel-header">
+                    <div>
+                        <h2>Clinical Consultation</h2>
+                        <p>Record the clinical assessment and treatment plan.</p>
+                    </div>
+
+                    ${
+                        readOnly
+                            ? `<span class="status-badge status-completed">Read Only</span>`
+                            : ""
+                    }
+                </div>
+
+                <form id="doctor-consultation-form" novalidate>
+
+                    <div class="form-section">
+                        <h3>Visit Details</h3>
+
+                        <div class="form-grid form-grid-2">
+
+                            <label class="form-field">
+                                <span>Consultation Type</span>
+                                <select
+                                    name="consultationType"
+                                    ${disabled}
+                                >
+                                    ${consultationTypes
+                                        .map(
+                                            (type) => `
+                                                <option
+                                                    value="${escapeHtml(type)}"
+                                                    ${
+                                                        (
+                                                            consultation.consultationType ||
+                                                            "General Consultation"
+                                                        ) === type
+                                                            ? "selected"
+                                                            : ""
+                                                    }
+                                                >
+                                                    ${escapeHtml(type)}
+                                                </option>
+                                            `
+                                        )
+                                        .join("")}
+                                </select>
+                            </label>
+
+                            <label class="form-field">
+                                <span>Chief Complaint</span>
+                                <input
+                                    type="text"
+                                    name="chiefComplaint"
+                                    placeholder="Primary reason for visit"
+                                    value="${escapeHtml(consultation.chiefComplaint || state.selectedPatient?.chiefComplaint || "")}"
+                                    ${disabled}
+                                >
+                            </label>
+
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Clinical Assessment</h3>
+
+                        <div class="form-grid">
+
+                            <label class="form-field">
+                                <span>History of Present Illness</span>
+                                <textarea
+                                    name="historyOfPresentIllness"
+                                    rows="4"
+                                    placeholder="Describe symptoms, duration, progression, and relevant history..."
+                                    ${disabled}
+                                >${escapeHtml(consultation.historyOfPresentIllness || "")}</textarea>
+                            </label>
+
+                            <label class="form-field">
+                                <span>Clinical Examination</span>
+                                <textarea
+                                    name="clinicalExamination"
+                                    rows="4"
+                                    placeholder="Record examination findings..."
+                                    ${disabled}
+                                >${escapeHtml(consultation.clinicalExamination || "")}</textarea>
+                            </label>
+
+                            <label class="form-field">
+                                <span>Diagnosis</span>
+                                <textarea
+                                    name="diagnosis"
+                                    rows="3"
+                                    placeholder="Enter provisional or confirmed diagnosis..."
+                                    ${disabled}
+                                >${escapeHtml(consultation.diagnosis || "")}</textarea>
+                            </label>
+
+                            <label class="form-field">
+                                <span>Doctor's Notes</span>
+                                <textarea
+                                    name="clinicalNotes"
+                                    rows="4"
+                                    placeholder="Additional clinical observations..."
+                                    ${disabled}
+                                >${escapeHtml(consultation.clinicalNotes || consultation.notes || "")}</textarea>
+                            </label>
+
+                        </div>
+                    </div>
+
+                    ${renderPrescriptionSection(consultation, readOnly)}
+
+                    ${renderLabOrderSection(readOnly)}
+
+                    <div class="consultation-form-footer">
+                        <button
+                            type="button"
+                            class="btn btn-secondary"
+                            data-doctor-consult-action="back"
+                        >
+                            Cancel
+                        </button>
+
+                        ${
+                            !readOnly
+                                ? `
+                                    <button
+                                        type="submit"
+                                        class="btn btn-primary"
+                                    >
+                                        Save Consultation
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        class="btn btn-success"
+                                        data-doctor-consult-action="complete"
+                                    >
+                                        Complete Consultation
+                                    </button>
+                                `
+                                : ""
+                        }
+                    </div>
+
+                </form>
+            </section>
+        `;
+    };
+
+    const renderPrescriptionSection = (consultation, readOnly) => {
+        const prescriptions = state.prescriptions.filter(
+            (item) =>
+                item.patientId === state.selectedPatient?.id &&
+                (
+                    item.encounterId === state.selectedEncounter?.id ||
+                    !state.selectedEncounter
+                )
         );
-      })
-      .sort((a, b) => {
-        return (
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-        );
-      });
-  }
 
-  function render() {
-    const root = getViewRoot();
+        const disabled = readOnly ? "disabled" : "";
 
-    if (!root) return;
+        return `
+            <div class="form-section prescription-section">
+                <div class="section-heading-row">
+                    <div>
+                        <h3>Prescription</h3>
+                        <p>Add medications and instructions.</p>
+                    </div>
 
-    if (state.currentView === 'consultation') {
-      renderConsultationWorkspace(root);
-      return;
-    }
+                    ${
+                        !readOnly
+                            ? `
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary btn-sm"
+                                    data-doctor-consult-action="add-prescription"
+                                >
+                                    + Add Medicine
+                                </button>
+                            `
+                            : ""
+                    }
+                </div>
 
-    renderDoctorDesk(root);
-  }
+                <div id="prescription-list">
+                    ${
+                        prescriptions.length
+                            ? prescriptions
+                                .map(renderPrescriptionItem)
+                                .join("")
+                            : `
+                                <div class="empty-inline">
+                                    No medicines added yet.
+                                </div>
+                            `
+                    }
+                </div>
 
-  function renderDoctorDesk(root) {
-    const stats = getStats();
-    const queues = getFilteredQueues();
+                ${
+                    !readOnly
+                        ? `
+                            <div class="prescription-editor">
+                                <div class="form-grid form-grid-2">
+                                    <label class="form-field">
+                                        <span>Medicine</span>
+                                        <input
+                                            type="text"
+                                            name="medicineName"
+                                            placeholder="e.g. Paracetamol 500 mg"
+                                            ${disabled}
+                                        >
+                                    </label>
 
-    root.innerHTML = `
-      <section class="doctor-module" data-module="${MODULE_NAME}">
-        ${renderPageHeader()}
-        ${renderStats(stats)}
-        ${renderFilters()}
-        ${renderQueueTable(queues)}
-      </section>
-    `;
+                                    <label class="form-field">
+                                        <span>Dosage</span>
+                                        <input
+                                            type="text"
+                                            name="medicineDosage"
+                                            placeholder="e.g. 1 tablet"
+                                            ${disabled}
+                                        >
+                                    </label>
 
-    bindDeskEvents(root);
-  }
+                                    <label class="form-field">
+                                        <span>Frequency</span>
+                                        <select
+                                            name="medicineFrequency"
+                                            ${disabled}
+                                        >
+                                            <option value="">Select frequency</option>
+                                            <option value="Once daily">Once daily</option>
+                                            <option value="Twice daily">Twice daily</option>
+                                            <option value="Three times daily">Three times daily</option>
+                                            <option value="Four times daily">Four times daily</option>
+                                            <option value="As needed">As needed</option>
+                                        </select>
+                                    </label>
 
-  function renderPageHeader() {
-    return `
-      <header class="page-header doctor-page-header">
-        <div class="page-header__main">
-          <div class="page-header__eyebrow">
-            Clinical Workspace
-          </div>
+                                    <label class="form-field">
+                                        <span>Duration</span>
+                                        <input
+                                            type="text"
+                                            name="medicineDuration"
+                                            placeholder="e.g. 5 days"
+                                            ${disabled}
+                                        >
+                                    </label>
+                                </div>
 
-          <h1 class="page-header__title">
-            Doctor Consultation
-          </h1>
+                                <label class="form-field">
+                                    <span>Instructions</span>
+                                    <input
+                                        type="text"
+                                        name="medicineInstructions"
+                                        placeholder="e.g. After food"
+                                        ${disabled}
+                                    >
+                                </label>
+                            </div>
+                        `
+                        : ""
+                }
+            </div>
+        `;
+    };
 
-          <p class="page-header__subtitle">
-            Review patients, conduct consultations, and maintain clinical records.
-          </p>
-        </div>
+    const renderPrescriptionItem = (prescription) => {
+        return `
+            <div class="prescription-item">
+                <div class="prescription-medicine">
+                    <strong>${escapeHtml(prescription.medicineName || prescription.name || "Medicine")}</strong>
+                    <span>
+                        ${escapeHtml(prescription.dosage || "—")}
+                        ·
+                        ${escapeHtml(prescription.frequency || "—")}
+                        ·
+                        ${escapeHtml(prescription.duration || "—")}
+                    </span>
+                </div>
 
-        <div class="page-header__actions">
-          <button
-            class="btn btn-secondary"
-            type="button"
-            data-doctor-action="refresh"
-          >
-            <span class="icon">↻</span>
-            Refresh
-          </button>
+                <div class="prescription-instructions">
+                    ${escapeHtml(prescription.instructions || "No instructions")}
+                </div>
 
-          <button
-            class="btn btn-primary"
-            type="button"
-            data-doctor-action="call-next"
-          >
-            <span class="icon">→</span>
-            Call Next Patient
-          </button>
-        </div>
-      </header>
-    `;
-  }
+                ${
+                    !prescription.readOnly
+                        ? `
+                            <button
+                                type="button"
+                                class="btn btn-ghost btn-sm"
+                                data-doctor-prescription-remove="${escapeHtml(prescription.id)}"
+                            >
+                                Remove
+                            </button>
+                        `
+                        : ""
+                }
+            </div>
+        `;
+    };
 
-  function renderStats(stats) {
-    return `
-      <div class="queue-stats-grid doctor-stats-grid">
-        <article class="metric-card">
-          <div class="metric-card__icon">👥</div>
-          <div class="metric-card__body">
-            <span class="metric-card__label">Today's Queue</span>
-            <strong class="metric-card__value">${stats.total}</strong>
-          </div>
-        </article>
-
-        <article class="metric-card">
-          <div class="metric-card__icon">⏳</div>
-          <div class="metric-card__body">
-            <span class="metric-card__label">Waiting</span>
-            <strong class="metric-card__value">${stats.waiting}</strong>
-          </div>
-        </article>
-
-        <article class="metric-card">
-          <div class="metric-card__icon">🩺</div>
-          <div class="metric-card__body">
-            <span class="metric-card__label">In Consultation</span>
-            <strong class="metric-card__value">${stats.inProgress}</strong>
-          </div>
-        </article>
-
-        <article class="metric-card">
-          <div class="metric-card__icon">✓</div>
-          <div class="metric-card__body">
-            <span class="metric-card__label">Completed</span>
-            <strong class="metric-card__value">${stats.completed}</strong>
-          </div>
-        </article>
-      </div>
-    `;
-  }
-
-  function renderFilters() {
-    const doctors = state.doctors
-      .map(doctor => {
-        const id = escapeHtml(doctor.id);
-        const name = escapeHtml(
-          doctor.fullName ||
-          doctor.name ||
-          [
-            doctor.firstName,
-            doctor.middleName,
-            doctor.lastName
-          ]
-            .filter(Boolean)
-            .join(' ') ||
-          'Doctor'
+    const renderLabOrderSection = (readOnly) => {
+        const orders = state.labOrders.filter(
+            (order) =>
+                order.patientId === state.selectedPatient?.id &&
+                (
+                    order.encounterId === state.selectedEncounter?.id ||
+                    !state.selectedEncounter
+                )
         );
 
         return `
-          <option
-            value="${id}"
-            ${state.selectedDoctor === doctor.id ? 'selected' : ''}
-          >
-            ${name}
-          </option>
-        `;
-      })
-      .join('');
-
-    return `
-      <div class="workspace-toolbar doctor-toolbar">
-        <div class="workspace-toolbar__search">
-          <label class="sr-only" for="doctor-search">
-            Search patients
-          </label>
-
-          <input
-            id="doctor-search"
-            class="form-control"
-            type="search"
-            placeholder="Search patient, UHID, phone, or token..."
-            value="${escapeHtml(state.searchTerm)}"
-            data-doctor-field="search"
-          />
-        </div>
-
-        <div class="workspace-toolbar__filters">
-          <label class="sr-only" for="doctor-status-filter">
-            Filter by status
-          </label>
-
-          <select
-            id="doctor-status-filter"
-            class="form-control"
-            data-doctor-field="status"
-          >
-            <option value="all" ${state.selectedStatus === 'all' ? 'selected' : ''}>
-              All Statuses
-            </option>
-            <option value="waiting" ${state.selectedStatus === 'waiting' ? 'selected' : ''}>
-              Waiting
-            </option>
-            <option value="called" ${state.selectedStatus === 'called' ? 'selected' : ''}>
-              Called
-            </option>
-            <option value="in-progress" ${state.selectedStatus === 'in-progress' ? 'selected' : ''}>
-              In Consultation
-            </option>
-            <option value="completed" ${state.selectedStatus === 'completed' ? 'selected' : ''}>
-              Completed
-            </option>
-          </select>
-
-          <label class="sr-only" for="doctor-assignee-filter">
-            Filter by doctor
-          </label>
-
-          <select
-            id="doctor-assignee-filter"
-            class="form-control"
-            data-doctor-field="doctor"
-          >
-            <option value="all">
-              All Doctors
-            </option>
-            ${doctors}
-          </select>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderQueueTable(queues) {
-    if (state.isLoading) {
-      return `
-        <div class="empty-state">
-          <div class="empty-state__icon">⏳</div>
-          <h3>Loading doctor queue</h3>
-          <p>Please wait while today's consultation queue is loaded.</p>
-        </div>
-      `;
-    }
-
-    if (!queues.length) {
-      return `
-        <div class="empty-state">
-          <div class="empty-state__icon">🩺</div>
-          <h3>No patients in the consultation queue</h3>
-          <p>
-            Patients completed from pre-consultation will appear here.
-          </p>
-        </div>
-      `;
-    }
-
-    return `
-      <section class="data-card doctor-queue-card">
-        <div class="data-card__header">
-          <div>
-            <h2 class="data-card__title">Today's Consultation Queue</h2>
-            <p class="data-card__subtitle">
-              ${queues.length} patient${queues.length === 1 ? '' : 's'} ready for review
-            </p>
-          </div>
-
-          <span class="badge badge-neutral">
-            ${formatDate(getTodayISO())}
-          </span>
-        </div>
-
-        <div class="table-wrapper">
-          <table class="data-table doctor-queue-table">
-            <thead>
-              <tr>
-                <th>Token</th>
-                <th>Patient</th>
-                <th>UHID</th>
-                <th>Age / Gender</th>
-                <th>Doctor</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${queues.map(renderQueueRow).join('')}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderQueueRow(queue) {
-    const patient = getQueuePatient(queue);
-
-    const patientId = escapeHtml(patient?.id || queue.patientId || '');
-    const patientName = escapeHtml(getPatientName(patient));
-    const uhid = escapeHtml(patient?.uhid || '—');
-    const token = escapeHtml(queue.tokenNumber || '—');
-    const age = escapeHtml(getPatientAge(patient));
-    const gender = escapeHtml(getGender(patient));
-    const doctorName = escapeHtml(getDoctorName(queue.doctorId));
-    const status = escapeHtml(queue.status);
-
-    const primaryAction =
-      queue.status === STATUS.IN_PROGRESS
-        ? 'continue'
-        : queue.status === STATUS.COMPLETED
-          ? 'view'
-          : 'start';
-
-    const primaryLabel =
-      primaryAction === 'continue'
-        ? 'Continue'
-        : primaryAction === 'view'
-          ? 'View'
-          : 'Start';
-
-    return `
-      <tr data-queue-row="${escapeHtml(queue.id)}">
-        <td>
-          <span class="token-badge">${token}</span>
-        </td>
-
-        <td>
-          <button
-            type="button"
-            class="table-link patient-name-link"
-            data-doctor-action="open-patient"
-            data-patient-id="${patientId}"
-          >
-            ${patientName}
-          </button>
-        </td>
-
-        <td>${uhid}</td>
-
-        <td>
-          ${age === '—' ? '—' : `${age} years`}
-          <span class="muted-text"> · ${gender}</span>
-        </td>
-
-        <td>${doctorName}</td>
-
-        <td>
-          <span class="status-badge ${getStatusClass(queue.status)}">
-            ${getStatusLabel(queue.status)}
-          </span>
-        </td>
-
-        <td>
-          <div class="table-actions">
-            <button
-              type="button"
-              class="btn btn-sm btn-primary"
-              data-doctor-action="${primaryAction}"
-              data-queue-id="${escapeHtml(queue.id)}"
-            >
-              ${primaryLabel}
-            </button>
-
-            ${
-              queue.status !== STATUS.COMPLETED
-                ? `
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-ghost"
-                    data-doctor-action="skip"
-                    data-queue-id="${escapeHtml(queue.id)}"
-                    aria-label="Skip patient"
-                  >
-                    Skip
-                  </button>
-                `
-                : ''
-            }
-          </div>
-        </td>
-      </tr>
-    `;
-  }
-
-  function bindDeskEvents(root) {
-    root.querySelectorAll('[data-doctor-field="search"]').forEach(input => {
-      input.addEventListener('input', event => {
-        state.searchTerm = event.target.value;
-        render();
-      });
-    });
-
-    root.querySelectorAll('[data-doctor-field="status"]').forEach(select => {
-      select.addEventListener('change', event => {
-        state.selectedStatus = event.target.value;
-        render();
-      });
-    });
-
-    root.querySelectorAll('[data-doctor-field="doctor"]').forEach(select => {
-      select.addEventListener('change', event => {
-        state.selectedDoctor = event.target.value;
-        render();
-      });
-    });
-
-    root.querySelectorAll('[data-doctor-action]').forEach(button => {
-      button.addEventListener('click', handleDeskAction);
-    });
-  }
-
-  async function handleDeskAction(event) {
-    const button = event.currentTarget;
-    const action = button.dataset.doctorAction;
-    const queueId = button.dataset.queueId;
-    const patientId = button.dataset.patientId;
-
-    switch (action) {
-      case 'refresh':
-        await refresh();
-        break;
-
-      case 'call-next':
-        await callNextPatient();
-        break;
-
-      case 'start':
-        await startConsultation(queueId);
-        break;
-
-      case 'continue':
-        await openConsultation(queueId);
-        break;
-
-      case 'view':
-        await openConsultation(queueId);
-        break;
-
-      case 'skip':
-        await skipQueue(queueId);
-        break;
-
-      case 'open-patient':
-        await openPatientProfile(patientId);
-        break;
-
-      default:
-        break;
-    }
-  }
-
-  async function callNextPatient() {
-    const nextQueue = getFilteredQueues().find(queue => {
-      return queue.status === STATUS.WAITING;
-    });
-
-    if (!nextQueue) {
-      showToast(
-        'There are no waiting patients in the doctor queue.',
-        'info',
-        'Queue Clear'
-      );
-      return;
-    }
-
-    await callPatient(nextQueue.id);
-  }
-
-  async function callPatient(queueId) {
-    const queue = state.queues.find(item => item.id === queueId);
-
-    if (!queue) return;
-
-    const patient = getQueuePatient(queue);
-
-    queue.status = STATUS.CALLED;
-    queue.calledAt = nowISO();
-    queue.updatedAt = nowISO();
-    queue.lastCalledAt = nowISO();
-
-    await STORAGE.put(STORE.queues, queue);
-
-    announce(
-      `Token ${queue.tokenNumber || ''}. ${getPatientName(patient)}. Please proceed to the doctor consultation room.`
-    );
-
-    emit('queueCalled', {
-      queue,
-      patient,
-      module: MODULE_NAME
-    });
-
-    showToast(
-      `${getPatientName(patient)} has been called.`,
-      'success',
-      'Patient Called'
-    );
-
-    await refresh();
-  }
-
-  async function startConsultation(queueId) {
-    const queue = state.queues.find(item => item.id === queueId);
-
-    if (!queue) return;
-
-    const patient = getQueuePatient(queue);
-
-    if (!patient) {
-      showToast(
-        'The patient record could not be found.',
-        'error',
-        'Patient Missing'
-      );
-      return;
-    }
-
-    queue.status = STATUS.IN_PROGRESS;
-    queue.stage = 'doctor-consultation';
-    queue.currentStage = 'doctor-consultation';
-    queue.startedAt = nowISO();
-    queue.updatedAt = nowISO();
-
-    await STORAGE.put(STORE.queues, queue);
-
-    state.selectedQueue = queue;
-    state.selectedPatient = patient;
-    state.selectedEncounter = getPatientEncounter(patient.id);
-
-    emit('queueStarted', {
-      queue,
-      patient,
-      module: MODULE_NAME
-    });
-
-    state.currentView = 'consultation';
-    render();
-  }
-
-  async function openConsultation(queueId) {
-    const queue = state.queues.find(item => item.id === queueId);
-
-    if (!queue) return;
-
-    const patient = getQueuePatient(queue);
-
-    if (!patient) {
-      showToast(
-        'The patient record could not be found.',
-        'error',
-        'Patient Missing'
-      );
-      return;
-    }
-
-    state.selectedQueue = queue;
-    state.selectedPatient = patient;
-    state.selectedEncounter = getPatientEncounter(patient.id);
-
-    state.currentView = 'consultation';
-    render();
-  }
-
-  async function skipQueue(queueId) {
-    const queue = state.queues.find(item => item.id === queueId);
-
-    if (!queue) return;
-
-    const patient = getQueuePatient(queue);
-
-    if (!window.confirm(
-      `Skip ${getPatientName(patient)} from the doctor queue?`
-    )) {
-      return;
-    }
-
-    queue.status = STATUS.SKIPPED;
-    queue.skippedAt = nowISO();
-    queue.updatedAt = nowISO();
-
-    await STORAGE.put(STORE.queues, queue);
-
-    emit('queueSkipped', {
-      queue,
-      patient,
-      module: MODULE_NAME
-    });
-
-    showToast(
-      `${getPatientName(patient)} was skipped.`,
-      'warning',
-      'Queue Updated'
-    );
-
-    await refresh();
-  }
-
-  function renderConsultationWorkspace(root) {
-    const queue = state.selectedQueue;
-    const patient = state.selectedPatient;
-
-    if (!queue || !patient) {
-      state.currentView = 'list';
-      render();
-      return;
-    }
-
-    const encounter = state.selectedEncounter;
-    const vitals = getPatientVitals(patient.id);
-    const previousLabOrders = getPatientLabResults(patient.id);
-
-    root.innerHTML = `
-      <section class="doctor-module doctor-consultation-module">
-        ${renderConsultationHeader(patient, queue)}
-
-        <div class="consultation-layout">
-          <aside class="consultation-sidebar">
-            ${renderPatientSummary(patient)}
-            ${renderVitalsSummary(vitals)}
-            ${renderClinicalHistory(patient)}
-            ${renderRecentLabResults(previousLabOrders)}
-          </aside>
-
-          <main class="consultation-main">
-            ${renderConsultationForm(patient, queue, encounter)}
-          </main>
-        </div>
-      </section>
-    `;
-
-    bindConsultationEvents(root);
-  }
-
-  function renderConsultationHeader(patient, queue) {
-    return `
-      <header class="page-header doctor-consultation-header">
-        <div class="page-header__main">
-          <button
-            type="button"
-            class="btn btn-ghost btn-back"
-            data-doctor-action="back-to-queue"
-          >
-            ← Back to Queue
-          </button>
-
-          <div class="page-header__eyebrow">
-            Consultation Workspace
-          </div>
-
-          <h1 class="page-header__title">
-            ${escapeHtml(getPatientName(patient))}
-          </h1>
-
-          <p class="page-header__subtitle">
-            UHID: ${escapeHtml(patient.uhid || 'Not assigned')}
-            · Token: ${escapeHtml(queue.tokenNumber || '—')}
-          </p>
-        </div>
-
-        <div class="page-header__actions">
-          <span class="status-badge ${getStatusClass(queue.status)}">
-            ${getStatusLabel(queue.status)}
-          </span>
-        </div>
-      </header>
-    `;
-  }
-
-  function renderPatientSummary(patient) {
-    return `
-      <section class="clinical-sidebar-card patient-summary-card">
-        <div class="clinical-sidebar-card__header">
-          <span class="clinical-sidebar-card__eyebrow">
-            Patient Profile
-          </span>
-        </div>
-
-        <div class="patient-profile-compact">
-          <div class="patient-avatar patient-avatar--large">
-            ${escapeHtml(
-              typeof UTILS.initials === 'function'
-                ? UTILS.initials(getPatientName(patient))
-                : getPatientName(patient).slice(0, 2).toUpperCase()
-            )}
-          </div>
-
-          <div>
-            <h2>${escapeHtml(getPatientName(patient))}</h2>
-            <p>${escapeHtml(patient.uhid || 'UHID not available')}</p>
-          </div>
-        </div>
-
-        <dl class="clinical-definition-list">
-          <div>
-            <dt>Age</dt>
-            <dd>${escapeHtml(getPatientAge(patient))}</dd>
-          </div>
-
-          <div>
-            <dt>Gender</dt>
-            <dd>${escapeHtml(getGender(patient))}</dd>
-          </div>
-
-          <div>
-            <dt>Phone</dt>
-            <dd>${escapeHtml(patient.phone || '—')}</dd>
-          </div>
-
-          <div>
-            <dt>Blood Group</dt>
-            <dd>${escapeHtml(patient.bloodGroup || '—')}</dd>
-          </div>
-        </dl>
-      </section>
-    `;
-  }
-
-  function renderVitalsSummary(vitals) {
-    if (!vitals) {
-      return `
-        <section class="clinical-sidebar-card">
-          <div class="clinical-sidebar-card__header">
-            <span class="clinical-sidebar-card__eyebrow">
-              Latest Vitals
-            </span>
-          </div>
-
-          <div class="empty-state empty-state--small">
-            <p>No vitals recorded.</p>
-          </div>
-        </section>
-      `;
-    }
-
-    return `
-      <section class="clinical-sidebar-card">
-        <div class="clinical-sidebar-card__header">
-          <span class="clinical-sidebar-card__eyebrow">
-            Latest Vitals
-          </span>
-
-          <span class="muted-text">
-            ${formatDate(vitals.recordedAt)}
-          </span>
-        </div>
-
-        <div class="vitals-mini-grid">
-          <div>
-            <span>BP</span>
-            <strong>${escapeHtml(vitals.bloodPressure || '—')}</strong>
-          </div>
-
-          <div>
-            <span>Pulse</span>
-            <strong>${escapeHtml(vitals.pulse || vitals.heartRate || '—')}</strong>
-          </div>
-
-          <div>
-            <span>Temp.</span>
-            <strong>${escapeHtml(vitals.temperature || '—')}</strong>
-          </div>
-
-          <div>
-            <span>SpO₂</span>
-            <strong>${escapeHtml(vitals.spo2 || vitals.oxygenSaturation || '—')}</strong>
-          </div>
-
-          <div>
-            <span>Weight</span>
-            <strong>${escapeHtml(vitals.weight || '—')}</strong>
-          </div>
-
-          <div>
-            <span>BMI</span>
-            <strong>${escapeHtml(vitals.bmi || '—')}</strong>
-          </div>
-        </div>
-      </section>
-    `;
-  }
-
-  function renderClinicalHistory(patient) {
-    const history = state.encounters
-      .filter(encounter => {
-        return (
-          encounter.patientId === patient.id ||
-          encounter.patient_id === patient.id
-        );
-      })
-      .sort((a, b) => {
-        return (
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-        );
-      })
-      .slice(0, 5);
-
-    return `
-      <section class="clinical-sidebar-card">
-        <div class="clinical-sidebar-card__header">
-          <span class="clinical-sidebar-card__eyebrow">
-            Clinical History
-          </span>
-        </div>
-
-        ${
-          history.length
-            ? `
-              <div class="timeline-list">
-                ${history.map(encounter => `
-                  <div class="timeline-item">
-                    <div class="timeline-item__marker"></div>
-
-                    <div class="timeline-item__content">
-                      <strong>
-                        ${escapeHtml(
-                          encounter.diagnosis ||
-                          encounter.chiefComplaint ||
-                          'Clinical Encounter'
-                        )}
-                      </strong>
-
-                      <span>
-                        ${formatDate(
-                          encounter.encounterDate ||
-                          encounter.createdAt
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            `
-            : `
-              <p class="muted-text">
-                No previous encounters found.
-              </p>
-            `
-        }
-      </section>
-    `;
-  }
-
-  function renderRecentLabResults(orders) {
-    return `
-      <section class="clinical-sidebar-card">
-        <div class="clinical-sidebar-card__header">
-          <span class="clinical-sidebar-card__eyebrow">
-            Recent Laboratory Orders
-          </span>
-        </div>
-
-        ${
-          orders.length
-            ? `
-              <div class="compact-list">
-                ${orders.slice(0, 5).map(order => `
-                  <div class="compact-list__item">
+            <div class="form-section lab-order-section">
+                <div class="section-heading-row">
                     <div>
-                      <strong>
-                        ${escapeHtml(
-                          order.testName ||
-                          order.serviceName ||
-                          order.name ||
-                          'Laboratory Test'
-                        )}
-                      </strong>
-
-                      <span>
-                        ${formatDate(order.createdAt)}
-                      </span>
+                        <h3>Laboratory & Diagnostics</h3>
+                        <p>Order investigations for this encounter.</p>
                     </div>
 
-                    <span class="status-badge ${getLabStatusClass(order.status)}">
-                      ${escapeHtml(order.status || 'Ordered')}
+                    ${
+                        !readOnly
+                            ? `
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary btn-sm"
+                                    data-doctor-consult-action="add-lab-order"
+                                >
+                                    + Add Investigation
+                                </button>
+                            `
+                            : ""
+                    }
+                </div>
+
+                <div id="lab-order-list">
+                    ${
+                        orders.length
+                            ? orders.map(renderLabOrderItem).join("")
+                            : `
+                                <div class="empty-inline">
+                                    No laboratory orders for this consultation.
+                                </div>
+                            `
+                    }
+                </div>
+
+                ${
+                    !readOnly
+                        ? `
+                            <div class="lab-order-editor">
+                                <div class="form-grid form-grid-2">
+                                    <label class="form-field">
+                                        <span>Investigation</span>
+                                        <select name="labTestName">
+                                            <option value="">Select investigation</option>
+                                            ${labTests
+                                                .map(
+                                                    (test) => `
+                                                        <option value="${escapeHtml(test)}">
+                                                            ${escapeHtml(test)}
+                                                        </option>
+                                                    `
+                                                )
+                                                .join("")}
+                                        </select>
+                                    </label>
+
+                                    <label class="form-field">
+                                        <span>Priority</span>
+                                        <select name="labPriority">
+                                            <option value="routine">Routine</option>
+                                            <option value="urgent">Urgent</option>
+                                            <option value="stat">STAT</option>
+                                        </select>
+                                    </label>
+                                </div>
+
+                                <label class="form-field">
+                                    <span>Clinical Indication</span>
+                                    <textarea
+                                        name="labClinicalIndication"
+                                        rows="2"
+                                        placeholder="Reason for ordering this investigation..."
+                                    ></textarea>
+                                </label>
+                            </div>
+                        `
+                        : ""
+                }
+            </div>
+        `;
+    };
+
+    const renderLabOrderItem = (order) => {
+        return `
+            <div class="lab-order-item">
+                <div>
+                    <strong>${escapeHtml(order.testName || order.name || "Investigation")}</strong>
+                    <span>${escapeHtml(order.priority || "routine")}</span>
+                </div>
+
+                <small>
+                    Status: ${escapeHtml(order.status || "ordered")}
+                </small>
+            </div>
+        `;
+    };
+
+    const renderPatientHistory = (encounters) => {
+        return `
+            <section class="panel-card patient-history-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Clinical History</h2>
+                        <p>Previous encounters</p>
+                    </div>
+                </div>
+
+                ${
+                    encounters.length
+                        ? `
+                            <div class="history-timeline">
+                                ${encounters
+                                    .slice(0, 6)
+                                    .map(renderHistoryItem)
+                                    .join("")}
+                            </div>
+                        `
+                        : `
+                            <div class="empty-inline">
+                                No previous encounters found.
+                            </div>
+                        `
+                }
+            </section>
+        `;
+    };
+
+    const renderHistoryItem = (encounter) => {
+        return `
+            <div class="history-item">
+                <div class="history-marker"></div>
+
+                <div class="history-content">
+                    <strong>
+                        ${escapeHtml(
+                            encounter.diagnosis ||
+                            encounter.chiefComplaint ||
+                            "Clinical Encounter"
+                        )}
+                    </strong>
+
+                    <span>
+                        ${escapeHtml(
+                            formatDate(
+                                encounter.encounterDate ||
+                                encounter.createdAt
+                            )
+                        )}
                     </span>
-                  </div>
-                `).join('')}
-              </div>
-            `
-            : `
-              <p class="muted-text">
-                No laboratory orders found.
-              </p>
-            `
-        }
-      </section>
-    `;
-  }
 
-  function getLabStatusClass(status) {
-    const normalized = String(status || '').toLowerCase();
-
-    if (
-      normalized.includes('complete') ||
-      normalized.includes('verified')
-    ) {
-      return 'status-success';
-    }
-
-    if (
-      normalized.includes('pending') ||
-      normalized.includes('ordered')
-    ) {
-      return 'status-warning';
-    }
-
-    return 'status-muted';
-  }
-
-  function renderConsultationForm(patient, queue, encounter) {
-    const existing = getExistingConsultation(patient.id, queue.id);
-
-    return `
-      <form
-        class="consultation-form"
-        id="doctor-consultation-form"
-        data-queue-id="${escapeHtml(queue.id)}"
-        data-patient-id="${escapeHtml(patient.id)}"
-      >
-        <section class="clinical-form-card">
-          <div class="clinical-form-card__header">
-            <div>
-              <span class="clinical-form-card__eyebrow">
-                Step 1
-              </span>
-
-              <h2>Clinical Assessment</h2>
-
-              <p>
-                Document the patient's symptoms, examination findings, and clinical impression.
-              </p>
+                    <small>
+                        ${escapeHtml(encounter.doctorName || "Doctor")}
+                    </small>
+                </div>
             </div>
-          </div>
-
-          <div class="form-grid form-grid--two">
-            <div class="form-field form-field--full">
-              <label for="chief-complaint">
-                Chief Complaint <span class="required">*</span>
-              </label>
-
-              <textarea
-                id="chief-complaint"
-                name="chiefComplaint"
-                class="form-control"
-                rows="3"
-                required
-                placeholder="Reason for today's visit..."
-              >${escapeHtml(
-                existing?.chiefComplaint ||
-                encounter?.chiefComplaint ||
-                ''
-              )}</textarea>
-            </div>
-
-            <div class="form-field form-field--full">
-              <label for="history-present-illness">
-                History of Present Illness
-              </label>
-
-              <textarea
-                id="history-present-illness"
-                name="historyOfPresentIllness"
-                class="form-control"
-                rows="4"
-                placeholder="Duration, symptoms, progression, relevant history..."
-              >${escapeHtml(
-                existing?.historyOfPresentIllness ||
-                encounter?.historyOfPresentIllness ||
-                ''
-              )}</textarea>
-            </div>
-
-            <div class="form-field form-field--full">
-              <label for="examination-findings">
-                Examination Findings
-              </label>
-
-              <textarea
-                id="examination-findings"
-                name="examinationFindings"
-                class="form-control"
-                rows="4"
-                placeholder="General examination and system-specific findings..."
-              >${escapeHtml(
-                existing?.examinationFindings ||
-                encounter?.examinationFindings ||
-                ''
-              )}</textarea>
-            </div>
-
-            <div class="form-field form-field--full">
-              <label for="diagnosis">
-                Diagnosis / Clinical Impression <span class="required">*</span>
-              </label>
-
-              <textarea
-                id="diagnosis"
-                name="diagnosis"
-                class="form-control"
-                rows="3"
-                required
-                placeholder="Primary diagnosis or clinical impression..."
-              >${escapeHtml(
-                existing?.diagnosis ||
-                encounter?.diagnosis ||
-                ''
-              )}</textarea>
-            </div>
-
-            <div class="form-field form-field--full">
-              <label for="additional-notes">
-                Additional Clinical Notes
-              </label>
-
-              <textarea
-                id="additional-notes"
-                name="clinicalNotes"
-                class="form-control"
-                rows="3"
-                placeholder="Additional observations, instructions, or follow-up notes..."
-              >${escapeHtml(
-                existing?.clinicalNotes ||
-                encounter?.clinicalNotes ||
-                ''
-              )}</textarea>
-            </div>
-          </div>
-        </section>
-
-        ${renderPrescriptionSection(existing)}
-
-        ${renderLabOrderSection(existing)}
-
-        <section class="clinical-form-card consultation-final-card">
-          <div class="clinical-form-card__header">
-            <div>
-              <span class="clinical-form-card__eyebrow">
-                Final Review
-              </span>
-
-              <h2>Consultation Outcome</h2>
-            </div>
-          </div>
-
-          <div class="form-grid form-grid--two">
-            <div class="form-field">
-              <label for="follow-up-date">
-                Follow-up Date
-              </label>
-
-              <input
-                id="follow-up-date"
-                name="followUpDate"
-                class="form-control"
-                type="date"
-                value="${escapeHtml(existing?.followUpDate || '')}"
-              />
-            </div>
-
-            <div class="form-field">
-              <label for="consultation-status">
-                Outcome
-              </label>
-
-              <select
-                id="consultation-status"
-                name="outcome"
-                class="form-control"
-              >
-                <option value="completed" selected>Consultation Completed</option>
-                <option value="follow-up">Follow-up Required</option>
-                <option value="referred">Referred to Another Department</option>
-                <option value="admitted">Admission Recommended</option>
-              </select>
-            </div>
-
-            <div class="form-field form-field--full">
-              <label for="referral-notes">
-                Referral / Follow-up Instructions
-              </label>
-
-              <textarea
-                id="referral-notes"
-                name="referralNotes"
-                class="form-control"
-                rows="3"
-                placeholder="Instructions for follow-up, referral, or admission..."
-              >${escapeHtml(existing?.referralNotes || '')}</textarea>
-            </div>
-          </div>
-        </section>
-
-        <div class="consultation-form-actions">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            data-doctor-action="back-to-queue"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            class="btn btn-primary"
-            data-doctor-action="complete-consultation"
-          >
-            Complete Consultation
-          </button>
-        </div>
-      </form>
-    `;
-  }
-
-  function getExistingConsultation(patientId, queueId) {
-    return state.consultations
-      .filter(consultation => {
-        const matchesPatient =
-          consultation.patientId === patientId ||
-          consultation.patient_id === patientId;
-
-        const matchesQueue =
-          !queueId ||
-          consultation.queueId === queueId ||
-          consultation.queue_id === queueId;
-
-        return matchesPatient && matchesQueue;
-      })
-      .sort((a, b) => {
-        return (
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-        );
-      })[0] || null;
-  }
-
-  function renderPrescriptionSection(existing) {
-    const prescriptions = existing?.prescriptions || [];
-
-    return `
-      <section class="clinical-form-card">
-        <div class="clinical-form-card__header">
-          <div>
-            <span class="clinical-form-card__eyebrow">
-              Step 2
-            </span>
-
-            <h2>Prescription</h2>
-
-            <p>
-              Add medicines and instructions for the pharmacy.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-doctor-action="add-medicine"
-          >
-            + Add Medicine
-          </button>
-        </div>
-
-        <div
-          class="prescription-list"
-          data-prescription-list
-        >
-          ${
-            prescriptions.length
-              ? prescriptions.map(renderPrescriptionRow).join('')
-              : renderPrescriptionRow()
-          }
-        </div>
-      </section>
-    `;
-  }
-
-  function renderPrescriptionRow(prescription = {}) {
-    return `
-      <div class="prescription-row" data-prescription-row>
-        <div class="form-field">
-          <label>Medicine</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="medicineName"
-            value="${escapeHtml(prescription.medicineName || '')}"
-            placeholder="Medicine name"
-          />
-        </div>
-
-        <div class="form-field">
-          <label>Strength</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="strength"
-            value="${escapeHtml(prescription.strength || '')}"
-            placeholder="500 mg"
-          />
-        </div>
-
-        <div class="form-field">
-          <label>Dosage</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="dosage"
-            value="${escapeHtml(prescription.dosage || '')}"
-            placeholder="1 tablet"
-          />
-        </div>
-
-        <div class="form-field">
-          <label>Frequency</label>
-
-          <select class="form-control" name="frequency">
-            <option value="">Select</option>
-            <option value="OD" ${prescription.frequency === 'OD' ? 'selected' : ''}>
-              OD — Once daily
-            </option>
-            <option value="BD" ${prescription.frequency === 'BD' ? 'selected' : ''}>
-              BD — Twice daily
-            </option>
-            <option value="TDS" ${prescription.frequency === 'TDS' ? 'selected' : ''}>
-              TDS — Three times daily
-            </option>
-            <option value="QID" ${prescription.frequency === 'QID' ? 'selected' : ''}>
-              QID — Four times daily
-            </option>
-            <option value="SOS" ${prescription.frequency === 'SOS' ? 'selected' : ''}>
-              SOS — As needed
-            </option>
-            <option value="HS" ${prescription.frequency === 'HS' ? 'selected' : ''}>
-              HS — At bedtime
-            </option>
-          </select>
-        </div>
-
-        <div class="form-field">
-          <label>Duration</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="duration"
-            value="${escapeHtml(prescription.duration || '')}"
-            placeholder="5 days"
-          />
-        </div>
-
-        <div class="form-field">
-          <label>Route</label>
-
-          <select class="form-control" name="route">
-            <option value="">Select</option>
-            <option value="oral" ${prescription.route === 'oral' ? 'selected' : ''}>
-              Oral
-            </option>
-            <option value="topical" ${prescription.route === 'topical' ? 'selected' : ''}>
-              Topical
-            </option>
-            <option value="injection" ${prescription.route === 'injection' ? 'selected' : ''}>
-              Injection
-            </option>
-            <option value="inhalation" ${prescription.route === 'inhalation' ? 'selected' : ''}>
-              Inhalation
-            </option>
-            <option value="other" ${prescription.route === 'other' ? 'selected' : ''}>
-              Other
-            </option>
-          </select>
-        </div>
-
-        <div class="form-field prescription-row__notes">
-          <label>Instructions</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="instructions"
-            value="${escapeHtml(prescription.instructions || '')}"
-            placeholder="After food, before sleep, etc."
-          />
-        </div>
-
-        <button
-          type="button"
-          class="btn btn-icon btn-ghost prescription-remove-button"
-          data-doctor-action="remove-medicine"
-          aria-label="Remove medicine"
-          title="Remove medicine"
-        >
-          ×
-        </button>
-      </div>
-    `;
-  }
-
-  function renderLabOrderSection(existing) {
-    const orders = existing?.labOrders || [];
-
-    return `
-      <section class="clinical-form-card">
-        <div class="clinical-form-card__header">
-          <div>
-            <span class="clinical-form-card__eyebrow">
-              Step 3
-            </span>
-
-            <h2>Laboratory / Diagnostic Orders</h2>
-
-            <p>
-              Request pathology, radiology, or other diagnostic services.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-doctor-action="add-lab-order"
-          >
-            + Add Test
-          </button>
-        </div>
-
-        <div
-          class="lab-order-list"
-          data-lab-order-list
-        >
-          ${
-            orders.length
-              ? orders.map(renderLabOrderRow).join('')
-              : renderLabOrderRow()
-          }
-        </div>
-      </section>
-    `;
-  }
-
-  function renderLabOrderRow(order = {}) {
-    return `
-      <div class="lab-order-row" data-lab-order-row>
-        <div class="form-field">
-          <label>Department</label>
-
-          <select class="form-control" name="department">
-            <option value="">Select Department</option>
-            <option value="pathology" ${order.department === 'pathology' ? 'selected' : ''}>
-              Pathology
-            </option>
-            <option value="radiology" ${order.department === 'radiology' ? 'selected' : ''}>
-              Radiology
-            </option>
-            <option value="laboratory" ${order.department === 'laboratory' ? 'selected' : ''}>
-              Laboratory
-            </option>
-          </select>
-        </div>
-
-        <div class="form-field">
-          <label>Test / Investigation</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="testName"
-            value="${escapeHtml(order.testName || '')}"
-            placeholder="CBC, X-Ray, LFT, etc."
-          />
-        </div>
-
-        <div class="form-field">
-          <label>Priority</label>
-
-          <select class="form-control" name="priority">
-            <option value="routine" ${order.priority === 'routine' ? 'selected' : ''}>
-              Routine
-            </option>
-            <option value="urgent" ${order.priority === 'urgent' ? 'selected' : ''}>
-              Urgent
-            </option>
-            <option value="stat" ${order.priority === 'stat' ? 'selected' : ''}>
-              STAT
-            </option>
-          </select>
-        </div>
-
-        <div class="form-field lab-order-row__notes">
-          <label>Clinical Notes</label>
-
-          <input
-            class="form-control"
-            type="text"
-            name="clinicalNotes"
-            value="${escapeHtml(order.clinicalNotes || '')}"
-            placeholder="Relevant clinical information"
-          />
-        </div>
-
-        <button
-          type="button"
-          class="btn btn-icon btn-ghost lab-order-remove-button"
-          data-doctor-action="remove-lab-order"
-          aria-label="Remove laboratory order"
-          title="Remove laboratory order"
-        >
-          ×
-        </button>
-      </div>
-    `;
-  }
-
-  function bindConsultationEvents(root) {
-    root.querySelectorAll('[data-doctor-action]').forEach(button => {
-      button.addEventListener('click', handleConsultationAction);
-    });
-
-    const form = root.querySelector('#doctor-consultation-form');
-
-    if (form) {
-      form.addEventListener('submit', handleConsultationSubmit);
-    }
-  }
-
-  async function handleConsultationAction(event) {
-    const action = event.currentTarget.dataset.doctorAction;
-
-    switch (action) {
-      case 'back-to-queue':
-        state.currentView = 'list';
-        state.selectedQueue = null;
-        state.selectedPatient = null;
-        state.selectedEncounter = null;
-        render();
-        break;
-
-      case 'add-medicine':
-        addPrescriptionRow();
-        break;
-
-      case 'remove-medicine':
-        event.currentTarget
-          .closest('[data-prescription-row]')
-          ?.remove();
-        break;
-
-      case 'add-lab-order':
-        addLabOrderRow();
-        break;
-
-      case 'remove-lab-order':
-        event.currentTarget
-          .closest('[data-lab-order-row]')
-          ?.remove();
-        break;
-
-      case 'complete-consultation':
-        break;
-
-      default:
-        break;
-    }
-  }
-
-  function addPrescriptionRow() {
-    const list = getElement('[data-prescription-list]');
-
-    if (!list) return;
-
-    list.insertAdjacentHTML(
-      'beforeend',
-      renderPrescriptionRow()
-    );
-  }
-
-  function addLabOrderRow() {
-    const list = getElement('[data-lab-order-list]');
-
-    if (!list) return;
-
-    list.insertAdjacentHTML(
-      'beforeend',
-      renderLabOrderRow()
-    );
-  }
-
-  function collectPrescriptionRows(root) {
-    return Array.from(
-      root.querySelectorAll('[data-prescription-row]')
-    )
-      .map(row => {
-        const getValue = name => {
-          return row.querySelector(`[name="${name}"]`)?.value.trim() || '';
-        };
-
-        return {
-          medicineName: getValue('medicineName'),
-          strength: getValue('strength'),
-          dosage: getValue('dosage'),
-          frequency: getValue('frequency'),
-          duration: getValue('duration'),
-          route: getValue('route'),
-          instructions: getValue('instructions')
-        };
-      })
-      .filter(item => item.medicineName);
-  }
-
-  function collectLabOrderRows(root) {
-    return Array.from(
-      root.querySelectorAll('[data-lab-order-row]')
-    )
-      .map(row => {
-        const getValue = name => {
-          return row.querySelector(`[name="${name}"]`)?.value.trim() || '';
-        };
-
-        return {
-          department: getValue('department'),
-          testName: getValue('testName'),
-          priority: getValue('priority') || 'routine',
-          clinicalNotes: getValue('clinicalNotes')
-        };
-      })
-      .filter(item => item.testName);
-  }
-
-  function validateConsultation(data) {
-    const errors = [];
-
-    if (!data.chiefComplaint.trim()) {
-      errors.push('Chief Complaint is required.');
-    }
-
-    if (!data.diagnosis.trim()) {
-      errors.push('Diagnosis / Clinical Impression is required.');
-    }
-
-    return errors;
-  }
-
-  async function handleConsultationSubmit(event) {
-    event.preventDefault();
-
-    if (state.isSaving) return;
-
-    const form = event.currentTarget;
-
-    const queueId = form.dataset.queueId;
-    const patientId = form.dataset.patientId;
-
-    const queue = state.queues.find(item => item.id === queueId);
-    const patient = state.patients.find(item => item.id === patientId);
-
-    if (!queue || !patient) {
-      showToast(
-        'Unable to identify the consultation patient.',
-        'error',
-        'Save Error'
-      );
-      return;
-    }
-
-    const formData = new FormData(form);
-
-    const consultationData = {
-      chiefComplaint: String(
-        formData.get('chiefComplaint') || ''
-      ).trim(),
-
-      historyOfPresentIllness: String(
-        formData.get('historyOfPresentIllness') || ''
-      ).trim(),
-
-      examinationFindings: String(
-        formData.get('examinationFindings') || ''
-      ).trim(),
-
-      diagnosis: String(
-        formData.get('diagnosis') || ''
-      ).trim(),
-
-      clinicalNotes: String(
-        formData.get('clinicalNotes') || ''
-      ).trim(),
-
-      followUpDate: String(
-        formData.get('followUpDate') || ''
-      ).trim(),
-
-      outcome: String(
-        formData.get('outcome') || 'completed'
-      ).trim(),
-
-      referralNotes: String(
-        formData.get('referralNotes') || ''
-      ).trim(),
-
-      prescriptions: collectPrescriptionRows(form),
-
-      labOrders: collectLabOrderRows(form)
+        `;
     };
 
-    const errors = validateConsultation(consultationData);
-
-    if (errors.length) {
-      showToast(
-        errors.join(' '),
-        'warning',
-        'Check Consultation'
-      );
-      return;
-    }
-
-    state.isSaving = true;
-
-    try {
-      const timestamp = nowISO();
-
-      const encounter = await saveEncounter({
-        patient,
-        queue,
-        consultationData,
-        timestamp
-      });
-
-      const consultation = await saveConsultation({
-        patient,
-        queue,
-        encounter,
-        consultationData,
-        timestamp
-      });
-
-      await savePrescriptions({
-        patient,
-        queue,
-        encounter,
-        consultation,
-        prescriptions: consultationData.prescriptions,
-        timestamp
-      });
-
-      await saveLabOrders({
-        patient,
-        queue,
-        encounter,
-        consultation,
-        labOrders: consultationData.labOrders,
-        timestamp
-      });
-
-      await completeDoctorQueue({
-        queue,
-        patient,
-        encounter,
-        consultation,
-        consultationData,
-        timestamp
-      });
-
-      state.isSaving = false;
-
-      emit('consultationCompleted', {
-        patient,
-        queue,
-        encounter,
-        consultation,
-        module: MODULE_NAME
-      });
-
-      showToast(
-        `Consultation for ${getPatientName(patient)} has been saved.`,
-        'success',
-        'Consultation Completed'
-      );
-
-      state.currentView = 'list';
-      state.selectedQueue = null;
-      state.selectedPatient = null;
-      state.selectedEncounter = null;
-
-      await refresh();
-    } catch (error) {
-      state.isSaving = false;
-
-      console.error('Consultation save failed:', error);
-
-      showToast(
-        'The consultation could not be saved. Please try again.',
-        'error',
-        'Save Error'
-      );
-    }
-  }
-
-  async function saveEncounter({
-    patient,
-    queue,
-    consultationData,
-    timestamp
-  }) {
-    const existingEncounter = getPatientEncounter(patient.id);
-
-    const encounter = {
-      ...(existingEncounter || {}),
-      id: existingEncounter?.id || createId('enc'),
-      patientId: patient.id,
-      uhid: patient.uhid || '',
-      queueId: queue.id,
-      encounterDate: timestamp,
-      consultationDate: timestamp,
-      doctorId: getQueueDoctorId(queue) || '',
-      doctorName: getDoctorName(getQueueDoctorId(queue)),
-      chiefComplaint: consultationData.chiefComplaint,
-      historyOfPresentIllness: consultationData.historyOfPresentIllness,
-      examinationFindings: consultationData.examinationFindings,
-      diagnosis: consultationData.diagnosis,
-      clinicalNotes: consultationData.clinicalNotes,
-      followUpDate: consultationData.followUpDate,
-      outcome: consultationData.outcome,
-      referralNotes: consultationData.referralNotes,
-      status: 'completed',
-      updatedAt: timestamp
-    };
-
-    if (!existingEncounter) {
-      encounter.createdAt = timestamp;
-    }
-
-    await STORAGE.put(STORE.encounters, encounter);
-
-    state.encounters = state.encounters.filter(
-      item => item.id !== encounter.id
-    );
-
-    state.encounters.push(encounter);
-
-    return encounter;
-  }
-
-  async function saveConsultation({
-    patient,
-    queue,
-    encounter,
-    consultationData,
-    timestamp
-  }) {
-    const existing = getExistingConsultation(
-      patient.id,
-      queue.id
-    );
-
-    const consultation = {
-      ...(existing || {}),
-      id: existing?.id || createId('consult'),
-      patientId: patient.id,
-      uhid: patient.uhid || '',
-      queueId: queue.id,
-      encounterId: encounter.id,
-      doctorId: getQueueDoctorId(queue) || '',
-      doctorName: getDoctorName(getQueueDoctorId(queue)),
-      chiefComplaint: consultationData.chiefComplaint,
-      historyOfPresentIllness: consultationData.historyOfPresentIllness,
-      examinationFindings: consultationData.examinationFindings,
-      diagnosis: consultationData.diagnosis,
-      clinicalNotes: consultationData.clinicalNotes,
-      followUpDate: consultationData.followUpDate,
-      outcome: consultationData.outcome,
-      referralNotes: consultationData.referralNotes,
-      prescriptions: consultationData.prescriptions,
-      labOrders: consultationData.labOrders,
-      status: 'completed',
-      completedAt: timestamp,
-      updatedAt: timestamp
-    };
-
-    if (!existing) {
-      consultation.createdAt = timestamp;
-    }
-
-    await STORAGE.put(STORE.consultations, consultation);
-
-    state.consultations = state.consultations.filter(
-      item => item.id !== consultation.id
-    );
-
-    state.consultations.push(consultation);
-
-    return consultation;
-  }
-
-  async function savePrescriptions({
-    patient,
-    queue,
-    encounter,
-    consultation,
-    prescriptions,
-    timestamp
-  }) {
-    const existingPrescriptions = state.prescriptions.filter(item => {
-      return (
-        item.consultationId === consultation.id ||
-        item.encounterId === encounter.id
-      );
-    });
-
-    for (const existing of existingPrescriptions) {
-      await STORAGE.remove(STORE.prescriptions, existing.id);
-    }
-
-    state.prescriptions = state.prescriptions.filter(item => {
-      return (
-        item.consultationId !== consultation.id &&
-        item.encounterId !== encounter.id
-      );
-    });
-
-    for (const prescription of prescriptions) {
-      const record = {
-        id: createId('rx'),
-        patientId: patient.id,
-        uhid: patient.uhid || '',
-        queueId: queue.id,
-        encounterId: encounter.id,
-        consultationId: consultation.id,
-        doctorId: consultation.doctorId,
-        doctorName: consultation.doctorName,
-        medicineName: prescription.medicineName,
-        strength: prescription.strength,
-        dosage: prescription.dosage,
-        frequency: prescription.frequency,
-        duration: prescription.duration,
-        route: prescription.route,
-        instructions: prescription.instructions,
-        status: 'prescribed',
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-
-      await STORAGE.add(STORE.prescriptions, record);
-      state.prescriptions.push(record);
-    }
-
-    if (prescriptions.length) {
-      emit('prescriptionCreated', {
-        patient,
-        encounter,
-        consultation,
-        prescriptions,
-        module: MODULE_NAME
-      });
-    }
-  }
-
-  async function saveLabOrders({
-    patient,
-    queue,
-    encounter,
-    consultation,
-    labOrders,
-    timestamp
-  }) {
-    const existingLabOrders = state.labOrders.filter(item => {
-      return (
-        item.consultationId === consultation.id ||
-        item.encounterId === encounter.id
-      );
-    });
-
-    for (const existing of existingLabOrders) {
-      await STORAGE.remove(STORE.labOrders, existing.id);
-    }
-
-    state.labOrders = state.labOrders.filter(item => {
-      return (
-        item.consultationId !== consultation.id &&
-        item.encounterId !== encounter.id
-      );
-    });
-
-    for (const labOrder of labOrders) {
-      const record = {
-        id: createId('lab'),
-        patientId: patient.id,
-        uhid: patient.uhid || '',
-        queueId: queue.id,
-        encounterId: encounter.id,
-        consultationId: consultation.id,
-        doctorId: consultation.doctorId,
-        doctorName: consultation.doctorName,
-        department: labOrder.department || 'laboratory',
-        testName: labOrder.testName,
-        priority: labOrder.priority || 'routine',
-        clinicalNotes: labOrder.clinicalNotes,
-        status: 'ordered',
-        orderedAt: timestamp,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-
-      await STORAGE.add(STORE.labOrders, record);
-      state.labOrders.push(record);
-    }
-
-    if (labOrders.length) {
-      emit('labOrderCreated', {
-        patient,
-        encounter,
-        consultation,
-        labOrders,
-        module: MODULE_NAME
-      });
-    }
-  }
-
-  async function completeDoctorQueue({
-    queue,
-    patient,
-    encounter,
-    consultation,
-    consultationData,
-    timestamp
-  }) {
-    queue.status = STATUS.COMPLETED;
-    queue.stage = 'completed';
-    queue.currentStage = 'completed';
-    queue.completedAt = timestamp;
-    queue.updatedAt = timestamp;
-    queue.encounterId = encounter.id;
-    queue.consultationId = consultation.id;
-    queue.outcome = consultationData.outcome;
-
-    if (consultationData.labOrders.length) {
-      queue.nextStage = 'laboratory';
-      queue.requiresLaboratory = true;
-    } else if (consultationData.prescriptions.length) {
-      queue.nextStage = 'pharmacy';
-      queue.requiresPharmacy = true;
-    } else {
-      queue.nextStage = 'billing';
-      queue.requiresBilling = true;
-    }
-
-    await STORAGE.put(STORE.queues, queue);
-
-    state.queues = state.queues.map(item => {
-      return item.id === queue.id
-        ? normalizeQueue(queue)
-        : item;
-    });
-
-    emit('queueCompleted', {
-      queue,
-      patient,
-      encounter,
-      consultation,
-      module: MODULE_NAME
-    });
-  }
-
-  async function openPatientProfile(patientId) {
-    const patient = state.patients.find(item => item.id === patientId);
-
-    if (!patient) return;
-
-    const encounterHistory = state.encounters
-      .filter(encounter => {
-        return (
-          encounter.patientId === patient.id ||
-          encounter.patient_id === patient.id
-        );
-      })
-      .sort((a, b) => {
-        return (
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-        );
-      });
-
-    const content = `
-      <div class="patient-profile-modal">
-        <div class="patient-profile-compact">
-          <div class="patient-avatar patient-avatar--large">
-            ${escapeHtml(
-              typeof UTILS.initials === 'function'
-                ? UTILS.initials(getPatientName(patient))
-                : getPatientName(patient).slice(0, 2).toUpperCase()
-            )}
-          </div>
-
-          <div>
-            <h2>${escapeHtml(getPatientName(patient))}</h2>
-            <p>${escapeHtml(patient.uhid || 'UHID not available')}</p>
-          </div>
-        </div>
-
-        <div class="form-grid form-grid--two">
-          <div>
-            <span class="detail-label">Age</span>
-            <strong>${escapeHtml(getPatientAge(patient))}</strong>
-          </div>
-
-          <div>
-            <span class="detail-label">Gender</span>
-            <strong>${escapeHtml(getGender(patient))}</strong>
-          </div>
-
-          <div>
-            <span class="detail-label">Phone</span>
-            <strong>${escapeHtml(patient.phone || '—')}</strong>
-          </div>
-
-          <div>
-            <span class="detail-label">Blood Group</span>
-            <strong>${escapeHtml(patient.bloodGroup || '—')}</strong>
-          </div>
-        </div>
-
-        <hr />
-
-        <h3>Recent Encounters</h3>
-
-        ${
-          encounterHistory.length
-            ? `
-              <div class="timeline-list">
-                ${encounterHistory.slice(0, 5).map(encounter => `
-                  <div class="timeline-item">
-                    <div class="timeline-item__marker"></div>
-
-                    <div class="timeline-item__content">
-                      <strong>
-                        ${escapeHtml(
-                          encounter.diagnosis ||
-                          encounter.chiefComplaint ||
-                          'Clinical Encounter'
-                        )}
-                      </strong>
-
-                      <span>
-                        ${formatDateTime(
-                          encounter.encounterDate ||
-                          encounter.createdAt
-                        )}
-                      </span>
-
-                      ${
-                        encounter.clinicalNotes
-                          ? `<p>${escapeHtml(encounter.clinicalNotes)}</p>`
-                          : ''
-                      }
+    const renderPreviousConsultations = (consultations) => {
+        return `
+            <section class="panel-card previous-consultations-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Previous Consultations</h2>
+                        <p>Recent clinical notes</p>
                     </div>
-                  </div>
-                `).join('')}
-              </div>
-            `
-            : '<p class="muted-text">No previous encounters found.</p>'
+                </div>
+
+                ${
+                    consultations.length
+                        ? `
+                            <div class="previous-consultation-list">
+                                ${consultations
+                                    .slice(0, 5)
+                                    .map(renderPreviousConsultation)
+                                    .join("")}
+                            </div>
+                        `
+                        : `
+                            <div class="empty-inline">
+                                No previous consultation notes found.
+                            </div>
+                        `
+                }
+            </section>
+        `;
+    };
+
+    const renderPreviousConsultation = (consultation) => {
+        return `
+            <article class="previous-consultation-item">
+                <div class="previous-consultation-header">
+                    <strong>
+                        ${escapeHtml(
+                            consultation.diagnosis ||
+                            consultation.chiefComplaint ||
+                            "Consultation"
+                        )}
+                    </strong>
+
+                    <span>
+                        ${escapeHtml(
+                            formatDate(
+                                consultation.consultationDate ||
+                                consultation.createdAt
+                            )
+                        )}
+                    </span>
+                </div>
+
+                <p>
+                    ${escapeHtml(
+                        consultation.clinicalNotes ||
+                        consultation.notes ||
+                        "No notes recorded."
+                    )}
+                </p>
+            </article>
+        `;
+    };
+
+    const bindConsultationEvents = (readOnly) => {
+        const container = getContainer();
+
+        if (!container) return;
+
+        container.querySelectorAll("[data-doctor-consult-action]")
+            .forEach((button) => {
+                button.addEventListener("click", () => {
+                    handleConsultationAction(
+                        button.dataset.doctorConsultAction
+                    );
+                });
+            });
+
+        container.querySelectorAll("[data-doctor-prescription-remove]")
+            .forEach((button) => {
+                button.addEventListener("click", () => {
+                    removePrescription(
+                        button.dataset.doctorPrescriptionRemove
+                    );
+                });
+            });
+
+        const form = container.querySelector(
+            "#doctor-consultation-form"
+        );
+
+        form?.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            if (!readOnly) {
+                await saveConsultation(false);
+            }
+        });
+    };
+
+    const handleConsultationAction = (action) => {
+        switch (action) {
+            case "back":
+                state.selectedQueue = null;
+                state.selectedPatient = null;
+                state.selectedEncounter = null;
+                render();
+                break;
+
+            case "patient-profile":
+                openPatientProfile();
+                break;
+
+            case "add-prescription":
+                addPrescription();
+                break;
+
+            case "add-lab-order":
+                addLabOrder();
+                break;
+
+            case "complete":
+                saveConsultation(true);
+                break;
+
+            default:
+                break;
         }
-      </div>
-    `;
-
-    openModal({
-      title: 'Patient Profile',
-      content,
-      size: 'large'
-    });
-  }
-
-  function openModal(options) {
-    if (typeof window.AURA_APP?.modal === 'function') {
-      try {
-        window.AURA_APP.modal(options);
-        return;
-      } catch (error) {
-        console.warn('AURA_APP modal failed:', error);
-      }
-    }
-
-    if (typeof AURA.modal === 'function') {
-      try {
-        AURA.modal(options);
-        return;
-      } catch (error) {
-        console.warn('AURA modal failed:', error);
-      }
-    }
-
-    const existing = document.querySelector('[data-doctor-modal]');
-
-    if (existing) existing.remove();
-
-    const modal = document.createElement('div');
-
-    modal.dataset.doctorModal = 'true';
-    modal.className = 'modal-backdrop';
-
-    modal.innerHTML = `
-      <div class="modal-dialog modal-dialog--${escapeHtml(options.size || 'medium')}">
-        <div class="modal-header">
-          <h2>${escapeHtml(options.title || '')}</h2>
-
-          <button
-            type="button"
-            class="modal-close"
-            data-modal-close
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        <div class="modal-body">
-          ${options.content || ''}
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    modal.addEventListener('click', event => {
-      if (
-        event.target === modal ||
-        event.target.closest('[data-modal-close]')
-      ) {
-        modal.remove();
-      }
-    });
-  }
-
-  async function refresh() {
-    await loadData();
-    render();
-  }
-
-  function getState() {
-    return {
-      ...state,
-      queues: [...state.queues],
-      patients: [...state.patients],
-      encounters: [...state.encounters],
-      consultations: [...state.consultations],
-      prescriptions: [...state.prescriptions],
-      labOrders: [...state.labOrders],
-      doctors: [...state.doctors]
     };
-  }
 
-  function getCurrentQueue() {
-    return state.selectedQueue;
-  }
+    const getFormData = () => {
+        const form = document.querySelector(
+            "#doctor-consultation-form"
+        );
 
-  function getCurrentPatient() {
-    return state.selectedPatient;
-  }
+        if (!form) return {};
 
-  function subscribe(callback) {
-    if (typeof callback !== 'function') {
-      return () => {};
-    }
+        const data = new FormData(form);
 
-    listeners.push(callback);
-
-    return () => {
-      const index = listeners.indexOf(callback);
-
-      if (index !== -1) {
-        listeners.splice(index, 1);
-      }
+        return Object.fromEntries(data.entries());
     };
-  }
 
-  function notify() {
-    listeners.forEach(callback => {
-      try {
-        callback(getState());
-      } catch (error) {
-        console.warn('Doctor subscriber failed:', error);
-      }
+    const ensureEncounter = async (formData) => {
+        if (state.selectedEncounter) {
+            return state.selectedEncounter;
+        }
+
+        const encounter = {
+            id: createId("encounter"),
+            patientId: state.selectedPatient.id,
+            uhid: state.selectedPatient.uhid || "",
+            queueId: state.selectedQueue?.id || null,
+            doctorId: getDoctorId(),
+            doctorName: getDoctorName(),
+            encounterDate: now(),
+            status: "in-progress",
+            chiefComplaint: formData.chiefComplaint || "",
+            createdAt: now(),
+            updatedAt: now()
+        };
+
+        await STORAGE.add(STORE.encounters, encounter);
+
+        state.encounters.push(encounter);
+        state.selectedEncounter = encounter;
+
+        emit("encounter:created", encounter);
+
+        return encounter;
+    };
+
+    const saveConsultation = async (complete = false) => {
+        if (!STORAGE || !state.selectedPatient) return;
+
+        const formData = getFormData();
+
+        if (!formData.chiefComplaint?.trim() && !formData.diagnosis?.trim()) {
+            notify(
+                "warning",
+                "Clinical Details Required",
+                "Please enter at least the chief complaint or diagnosis."
+            );
+
+            return;
+        }
+
+        try {
+            const encounter = await ensureEncounter(formData);
+
+            const existing = state.consultations.find(
+                (item) =>
+                    item.encounterId === encounter.id
+            );
+
+            const consultation = {
+                ...(existing || {}),
+                id: existing?.id || createId("consultation"),
+                patientId: state.selectedPatient.id,
+                uhid: state.selectedPatient.uhid || "",
+                encounterId: encounter.id,
+                queueId: state.selectedQueue?.id || null,
+                doctorId: getDoctorId(),
+                doctorName: getDoctorName(),
+                consultationType:
+                    formData.consultationType ||
+                    "General Consultation",
+                chiefComplaint: formData.chiefComplaint || "",
+                historyOfPresentIllness:
+                    formData.historyOfPresentIllness || "",
+                clinicalExamination:
+                    formData.clinicalExamination || "",
+                diagnosis: formData.diagnosis || "",
+                clinicalNotes: formData.clinicalNotes || "",
+                notes: formData.clinicalNotes || "",
+                consultationDate:
+                    existing?.consultationDate || now(),
+                status: complete ? "completed" : "in-progress",
+                createdAt: existing?.createdAt || now(),
+                updatedAt: now()
+            };
+
+            if (existing) {
+                await STORAGE.put(STORE.consultations, consultation);
+
+                const index = state.consultations.findIndex(
+                    (item) => item.id === existing.id
+                );
+
+                if (index !== -1) {
+                    state.consultations[index] = consultation;
+                }
+            } else {
+                await STORAGE.add(STORE.consultations, consultation);
+                state.consultations.push(consultation);
+            }
+
+            await STORAGE.put(STORE.encounters, {
+                ...encounter,
+                status: complete ? "completed" : "in-progress",
+                diagnosis: formData.diagnosis || "",
+                chiefComplaint: formData.chiefComplaint || "",
+                updatedAt: now()
+            });
+
+            const encounterIndex = state.encounters.findIndex(
+                (item) => item.id === encounter.id
+            );
+
+            if (encounterIndex !== -1) {
+                state.encounters[encounterIndex] = {
+                    ...state.encounters[encounterIndex],
+                    ...encounter,
+                    status: complete ? "completed" : "in-progress",
+                    diagnosis: formData.diagnosis || "",
+                    chiefComplaint: formData.chiefComplaint || "",
+                    updatedAt: now()
+                };
+            }
+
+            emit(
+                complete
+                    ? "consultation:completed"
+                    : "consultation:saved",
+                consultation
+            );
+
+            await audit(
+                complete
+                    ? "Consultation completed"
+                    : "Consultation saved",
+                {
+                    consultationId: consultation.id,
+                    encounterId: encounter.id,
+                    patientId: state.selectedPatient.id
+                }
+            );
+
+            if (complete) {
+                await completeQueue();
+            }
+
+            notify(
+                "success",
+                complete ? "Consultation Completed" : "Consultation Saved",
+                complete
+                    ? "The patient encounter has been completed successfully."
+                    : "Clinical consultation details have been saved."
+            );
+
+            if (complete) {
+                state.selectedQueue = null;
+                state.selectedPatient = null;
+                state.selectedEncounter = null;
+                render();
+            } else {
+                state.selectedEncounter = {
+                    ...encounter,
+                    status: "in-progress"
+                };
+
+                notify(
+                    "info",
+                    "Draft Saved",
+                    "You can continue editing this consultation."
+                );
+            }
+
+        } catch (error) {
+            console.error("Failed to save consultation:", error);
+
+            notify(
+                "error",
+                "Save Failed",
+                "The consultation could not be saved."
+            );
+        }
+    };
+
+    const completeQueue = async () => {
+        if (!state.selectedQueue) return;
+
+        const queue = await updateQueue(
+            state.selectedQueue.id,
+            {
+                status: "completed",
+                completedAt: now(),
+                stage: "completed",
+                nextStage: null
+            }
+        );
+
+        emit("queue:completed", {
+            queueId: queue?.id,
+            patientId: state.selectedPatient?.id
+        });
+    };
+
+    const addPrescription = async () => {
+        if (!STORAGE || !state.selectedPatient) return;
+
+        const formData = getFormData();
+
+        const medicineName =
+            formData.medicineName?.trim();
+
+        if (!medicineName) {
+            notify(
+                "warning",
+                "Medicine Required",
+                "Enter a medicine name before adding a prescription."
+            );
+
+            return;
+        }
+
+        try {
+            const prescription = {
+                id: createId("prescription"),
+                patientId: state.selectedPatient.id,
+                uhid: state.selectedPatient.uhid || "",
+                encounterId: state.selectedEncounter?.id || null,
+                queueId: state.selectedQueue?.id || null,
+                doctorId: getDoctorId(),
+                doctorName: getDoctorName(),
+                medicineName,
+                dosage: formData.medicineDosage || "",
+                frequency: formData.medicineFrequency || "",
+                duration: formData.medicineDuration || "",
+                instructions: formData.medicineInstructions || "",
+                status: "active",
+                createdAt: now(),
+                updatedAt: now()
+            };
+
+            await STORAGE.add(
+                STORE.prescriptions,
+                prescription
+            );
+
+            state.prescriptions.push(prescription);
+
+            emit("prescription:created", prescription);
+
+            await audit("Prescription created", {
+                prescriptionId: prescription.id,
+                patientId: state.selectedPatient.id,
+                medicineName
+            });
+
+            notify(
+                "success",
+                "Medicine Added",
+                `${medicineName} has been added to the prescription.`
+            );
+
+            renderConsultationWorkspace(false);
+
+        } catch (error) {
+            console.error("Failed to add prescription:", error);
+
+            notify(
+                "error",
+                "Prescription Failed",
+                "The medicine could not be added."
+            );
+        }
+    };
+
+    const removePrescription = async (prescriptionId) => {
+        if (!STORAGE) return;
+
+        const prescription = state.prescriptions.find(
+            (item) => item.id === prescriptionId
+        );
+
+        if (!prescription) return;
+
+        try {
+            await STORAGE.remove(
+                STORE.prescriptions,
+                prescriptionId
+            );
+
+            state.prescriptions = state.prescriptions.filter(
+                (item) => item.id !== prescriptionId
+            );
+
+            emit("prescription:deleted", {
+                prescriptionId,
+                patientId: state.selectedPatient?.id
+            });
+
+            await audit("Prescription removed", {
+                prescriptionId,
+                patientId: state.selectedPatient?.id
+            });
+
+            notify(
+                "success",
+                "Medicine Removed",
+                "The prescription item has been removed."
+            );
+
+            renderConsultationWorkspace(false);
+
+        } catch (error) {
+            console.error("Failed to remove prescription:", error);
+
+            notify(
+                "error",
+                "Removal Failed",
+                "The prescription item could not be removed."
+            );
+        }
+    };
+
+    const addLabOrder = async () => {
+        if (!STORAGE || !state.selectedPatient) return;
+
+        const formData = getFormData();
+
+        const testName = formData.labTestName?.trim();
+
+        if (!testName) {
+            notify(
+                "warning",
+                "Investigation Required",
+                "Select a laboratory investigation."
+            );
+
+            return;
+        }
+
+        try {
+            const labOrder = {
+                id: createId("lab"),
+                orderNumber: generateLabOrderNumber(),
+                patientId: state.selectedPatient.id,
+                uhid: state.selectedPatient.uhid || "",
+                encounterId: state.selectedEncounter?.id || null,
+                queueId: state.selectedQueue?.id || null,
+                orderedBy: getDoctorId(),
+                doctorId: getDoctorId(),
+                doctorName: getDoctorName(),
+                testName,
+                priority: formData.labPriority || "routine",
+                clinicalIndication:
+                    formData.labClinicalIndication || "",
+                status: "ordered",
+                orderDate: now(),
+                createdAt: now(),
+                updatedAt: now()
+            };
+
+            await STORAGE.add(
+                STORE.labOrders,
+                labOrder
+            );
+
+            state.labOrders.push(labOrder);
+
+            emit("lab:order-created", labOrder);
+
+            await audit("Laboratory order created", {
+                labOrderId: labOrder.id,
+                patientId: state.selectedPatient.id,
+                testName
+            });
+
+            notify(
+                "success",
+                "Investigation Ordered",
+                `${testName} has been sent to the laboratory.`
+            );
+
+            renderConsultationWorkspace(false);
+
+        } catch (error) {
+            console.error("Failed to create lab order:", error);
+
+            notify(
+                "error",
+                "Lab Order Failed",
+                "The investigation could not be ordered."
+            );
+        }
+    };
+
+    const generateLabOrderNumber = () => {
+        const prefix = "LAB";
+
+        const datePart = today().replace(/-/g, "");
+
+        const count = state.labOrders.filter(
+            (order) =>
+                order.createdAt?.slice?.(0, 10) === today()
+        ).length + 1;
+
+        return `${prefix}-${datePart}-${String(count).padStart(4, "0")}`;
+    };
+
+    const openPatientProfile = () => {
+        const patient = state.selectedPatient;
+
+        if (!patient) return;
+
+        const profileHtml = `
+            <div class="modal-content doctor-patient-profile-modal">
+
+                <div class="modal-header">
+                    <div>
+                        <div class="eyebrow">PATIENT PROFILE</div>
+                        <h2>${escapeHtml(getPatientName(patient))}</h2>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="modal-close"
+                        data-doctor-modal-close
+                    >
+                        ×
+                    </button>
+                </div>
+
+                <div class="profile-summary-grid">
+                    <div>
+                        <span>UHID</span>
+                        <strong>${escapeHtml(patient.uhid || "—")}</strong>
+                    </div>
+
+                    <div>
+                        <span>Gender</span>
+                        <strong>${escapeHtml(patient.gender || "—")}</strong>
+                    </div>
+
+                    <div>
+                        <span>Date of Birth</span>
+                        <strong>${escapeHtml(formatDate(patient.dateOfBirth))}</strong>
+                    </div>
+
+                    <div>
+                        <span>Phone</span>
+                        <strong>${escapeHtml(patient.phone || "—")}</strong>
+                    </div>
+
+                    <div>
+                        <span>Blood Group</span>
+                        <strong>${escapeHtml(patient.bloodGroup || "—")}</strong>
+                    </div>
+
+                    <div>
+                        <span>Emergency Contact</span>
+                        <strong>${escapeHtml(patient.emergencyContact?.phone || patient.emergencyPhone || "—")}</strong>
+                    </div>
+                </div>
+
+                <div class="profile-detail-section">
+                    <h3>Allergies</h3>
+                    <p>${escapeHtml(patient.allergies || "No known allergies recorded.")}</p>
+                </div>
+
+                <div class="profile-detail-section">
+                    <h3>Medical Notes</h3>
+                    <p>${escapeHtml(patient.medicalNotes || "No medical notes recorded.")}</p>
+                </div>
+
+                <div class="modal-footer">
+                    <button
+                        type="button"
+                        class="btn btn-primary"
+                        data-doctor-modal-close
+                    >
+                        Close
+                    </button>
+                </div>
+
+            </div>
+        `;
+
+        openModal(profileHtml);
+    };
+
+    const openModal = (html) => {
+        const existing = document.querySelector(
+            "#doctor-module-modal"
+        );
+
+        existing?.remove();
+
+        const overlay = document.createElement("div");
+
+        overlay.id = "doctor-module-modal";
+        overlay.className = "modal-overlay is-open";
+
+        overlay.innerHTML = `
+            <div class="modal-dialog">
+                ${html}
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelectorAll("[data-doctor-modal-close]")
+            .forEach((button) => {
+                button.addEventListener("click", () => {
+                    overlay.remove();
+                });
+            });
+
+        overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) {
+                overlay.remove();
+            }
+        });
+    };
+
+    const refresh = async () => {
+        await loadData();
+
+        if (state.selectedPatient) {
+            renderConsultationWorkspace(false);
+        } else {
+            render();
+        }
+
+        notify(
+            "success",
+            "Workspace Refreshed",
+            "Doctor consultation data has been updated."
+        );
+    };
+
+    const handleExternalEvent = () => {
+        if (!state.initialized) return;
+
+        loadData().then(() => {
+            if (state.selectedPatient) {
+                renderConsultationWorkspace(false);
+            } else {
+                render();
+            }
+        });
+    };
+
+    const subscribeToEvents = () => {
+        if (!EVENTS || typeof EVENTS.on !== "function") return;
+
+        const events = [
+            "patient:created",
+            "patient:updated",
+            "queue:created",
+            "queue:called",
+            "queue:completed",
+            "vitals:recorded",
+            "consultation:saved",
+            "consultation:completed",
+            "prescription:created",
+            "lab:order-created",
+            "storage:changed"
+        ];
+
+        events.forEach((eventName) => {
+            EVENTS.on(eventName, handleExternalEvent);
+        });
+    };
+
+    const initialize = async () => {
+        if (state.initialized) {
+            await refresh();
+            return;
+        }
+
+        await loadData();
+
+        state.initialized = true;
+
+        subscribeToEvents();
+
+        render();
+    };
+
+    const getState = () => ({
+        ...state,
+        patients: [...state.patients],
+        queues: [...state.queues],
+        encounters: [...state.encounters],
+        vitals: [...state.vitals],
+        consultations: [...state.consultations],
+        prescriptions: [...state.prescriptions],
+        labOrders: [...state.labOrders],
+        staff: [...state.staff]
     });
-  }
 
-  function registerEvents() {
-    const eventNames = [
-      'aura:queue-change',
-      'aura:queue-called',
-      'aura:queue-completed',
-      'aura:vitals-recorded',
-      'aura:patient-created',
-      'aura:patient-updated',
-      'aura:storage-change'
-    ];
-
-    eventNames.forEach(eventName => {
-      const handler = () => {
-        refresh();
-      };
-
-      document.addEventListener(eventName, handler);
-      listeners.push(() => {
-        document.removeEventListener(eventName, handler);
-      });
-    });
-  }
-
-  async function initialize() {
-    if (state.isInitialized) {
-      await refresh();
-      return getState();
-    }
-
-    state.isInitialized = true;
-
-    registerEvents();
-
-    await loadData();
-
-    if (typeof window.AURA_APP?.registerModule === 'function') {
-      window.AURA_APP.registerModule(MODULE_NAME, api);
-    }
-
-    if (typeof window.AURA_ROUTER?.register === 'function') {
-      window.AURA_ROUTER.register({
+    const api = {
         name: MODULE_NAME,
-        path: 'doctor',
-        title: 'Doctor Consultation',
-        icon: 'stethoscope',
-        module: MODULE_NAME
-      });
+        state,
+
+        initialize,
+        refresh,
+        render,
+
+        loadData,
+        getState,
+
+        getDoctor: getActiveDoctor,
+        getDoctorName,
+        getDoctorId,
+
+        getDoctorQueues,
+        getFilteredQueues,
+
+        callNext,
+        callPatient,
+        startConsultation,
+        recallPatient,
+
+        openConsultation,
+        saveConsultation,
+
+        addPrescription,
+        removePrescription,
+
+        addLabOrder,
+
+        completeQueue
+    };
+
+    window.AURA_DOCTOR = api;
+
+    window.AURA = window.AURA || {};
+    window.AURA.doctor = api;
+
+    if (window.AURA_APP?.registerModule) {
+        window.AURA_APP.registerModule(MODULE_NAME, api);
     }
 
-    notify();
+    if (window.AURA_EVENTS?.on) {
+        window.AURA_EVENTS.on("route:changed", (route) => {
+            if (route === "doctor") {
+                initialize();
+            }
+        });
+    }
 
-    return getState();
-  }
-
-  const api = {
-    name: MODULE_NAME,
-    state,
-
-    initialize,
-    refresh,
-    render,
-
-    getState,
-    getCurrentQueue,
-    getCurrentPatient,
-    subscribe,
-
-    loadData,
-
-    callPatient,
-    callNextPatient,
-    startConsultation,
-    openConsultation,
-    skipQueue,
-
-    saveEncounter,
-    saveConsultation,
-    savePrescriptions,
-    saveLabOrders,
-
-    openPatientProfile,
-
-    getFilteredQueues,
-    getStats
-  };
-
-  window.AURA_DOCTOR = api;
-
-  window.AURA = window.AURA || {};
-  window.AURA.doctor = api;
-
-  window.AURA_DOCTOR_MODULE = api;
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      initialize().catch(error => {
-        console.error('Doctor module initialization failed:', error);
-      });
-    });
-  } else {
-    initialize().catch(error => {
-      console.error('Doctor module initialization failed:', error);
-    });
-  }
-
-})();
+})(window, document);
